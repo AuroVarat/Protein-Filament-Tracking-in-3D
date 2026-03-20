@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 from matplotlib.widgets import Slider
 
 def main():
-    file_path = "ch20_URA7_URA8_002-crop1.tiff"
+    file_path = "ch20_URA7_URA8_002-crop1.tif"
     print(f"Loading {file_path}...")
     
     try:
