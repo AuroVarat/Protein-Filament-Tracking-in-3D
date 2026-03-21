@@ -13,23 +13,16 @@ dependencies = [
     "imageio>=2.28",
     "imageio-ffmpeg>=0.4.8",
     "gradio>=6.9.0",
+    "tqdm>=4.67.3",
 ]
 
-[tool.uv.sources]
-# PyTorch CUDA 12.6 (Stable) — Includes PTX forwarding for Blackwell GPUs
-# We tell uv to ONLY use this custom index on Linux. 
-# On macOS, it falls back to standard PyPI (which has the MPS wheels).
-torch = [
-  { index = "pytorch-cu126", marker = "sys_platform == 'linux'" }
+[tool.uv]
+prerelease = "allow"
+find-links = [
+    "https://download.pytorch.org/whl/nightly/cu128/torch/",
+    "https://download.pytorch.org/whl/nightly/cu128/torchvision/",
+    "https://download.pytorch.org/whl/nightly/cu128/pytorch-triton/"
 ]
-torchvision = [
-  { index = "pytorch-cu126", marker = "sys_platform == 'linux'" }
-]
-
-[[tool.uv.index]]
-name = "pytorch-cu126"
-url = "https://download.pytorch.org/whl/cu126"
-explicit = true
 
 [build-system]
 requires = ["hatchling"]

@@ -109,33 +109,45 @@ def make_projections(vol, mask_vol):
 def make_frame(vol, mask_vol):
     """
     Creates a single composite frame for the MP4:
-    Left Half: 2.5D pseudo-3D stack
-    Right Half: XY, XZ, YZ Projections stacked vertically
+    Row 1: 5 raw slices side-by-side
+    Row 2: 5 overlay slices side-by-side
+    Row 3: Left (2.5D pseudo-3D stack) | Right (XYZ Projections)
     """
-    # 2.5D stack
-    stack_img = render_2p5d(vol, mask_vol, shift_x=25, shift_y=-25)
+    Z, H, W = vol.shape
     
-    # Projections
+    # 1. Panoramas (Row 1 & 2)
+    pano_raw = np.hstack([vol[z] for z in range(Z)])
+    pano_raw_rgb = np.stack([pano_raw]*3, axis=-1)
+    
+    pano_overlay = pano_raw_rgb.copy()
+    mask_pano = np.hstack([mask_vol[z] for z in range(Z)])
+    pano_overlay[mask_pano > 0.5] = [0.0, 1.0, 0.0]
+    
+    pano_W = pano_raw_rgb.shape[1]
+    
+    # 2. Layout Bottom Row Components
+    stack_img = render_2p5d(vol, mask_vol, shift_x=25, shift_y=-25)
     proj_col = make_projections(vol, mask_vol)
     
     h_s, w_s, _ = stack_img.shape
     h_p, w_p, _ = proj_col.shape
     
-    # Add borders and padding
-    H_frame = max(h_s, h_p) + 40
-    W_frame = w_s + w_p + 80
+    row3_H = max(h_s, h_p) + 40
+    row3 = np.zeros((row3_H, pano_W, 3), dtype=np.float32)
     
-    frame = np.zeros((H_frame, W_frame, 3), dtype=np.float32)
+    # Place stack in the center of the left half
+    y_s = (row3_H - h_s) // 2
+    x_s = max(10, (pano_W // 2 - w_s) // 2)
+    row3[y_s:y_s+h_s, x_s:x_s+w_s] = stack_img
     
-    # Left alignment for 2.5D Stack
-    y_s = (H_frame - h_s) // 2
-    x_s = 20
-    frame[y_s:y_s+h_s, x_s:x_s+w_s] = stack_img
+    # Place projections in the center of the right half
+    y_p = (row3_H - h_p) // 2
+    x_p = pano_W // 2 + max(10, (pano_W // 2 - w_p) // 2)
+    row3[y_p:y_p+h_p, x_p:x_p+w_p] = proj_col
     
-    # Right alignment for Projections
-    y_p = (H_frame - h_p) // 2
-    x_p = x_s + w_s + 40
-    frame[y_p:y_p+h_p, x_p:x_p+w_p] = proj_col
+    # Combine everything with padding
+    pad = np.zeros((10, pano_W, 3), dtype=np.float32)
+    frame = np.vstack([pano_raw_rgb, pad, pano_overlay, pad, row3])
     
     return (np.clip(frame, 0, 1) * 255).astype(np.uint8)
 

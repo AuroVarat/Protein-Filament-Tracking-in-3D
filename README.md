@@ -51,17 +51,17 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 uv sync
 ```
 
-### Linux (NVIDIA GPU — CUDA 12.6 Standard)
+### Linux (NVIDIA GPU — RTX 5090 / Blackwell Support)
 
 ```bash
 # Install uv
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# Install all dependencies (PyTorch with CUDA 12.6 support)
+# Install all dependencies (PyTorch Nightly cu128 for Blackwell support)
 uv sync
 ```
 
-> The `pyproject.toml` file automatically directs Linux systems to the CUDA 12.6 PyTorch index, and macOS systems to the default PyPI MPS wheel. No manual editing required!
+> **Note for Blackwell/sm_120**: The `pyproject.toml` is configured to use **PyTorch Nightly (cu128)** and allows pre-releases. This is required for the RTX 5090, as stable wheels currently lack the necessary binary kernels for this architecture. Standard `uv sync` will handle this automatically.
 
 Device priority in all scripts: **CUDA → MPS → CPU** (auto-detected).
 
