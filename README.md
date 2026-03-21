@@ -13,22 +13,20 @@ A suite of Python scripts for loading, visualising, and ML-based segmentation of
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
 # Install all dependencies (PyTorch with MPS support)
-# First comment out the [tool.uv.sources] block in pyproject.toml, then:
 uv sync
 ```
 
-### Linux (NVIDIA GPU — CUDA 12.4)
+### Linux (NVIDIA GPU — CUDA 12.6 Standard)
 
 ```bash
 # Install uv
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# Keep the [tool.uv.sources] block in pyproject.toml enabled, then:
+# Install all dependencies (PyTorch with CUDA 12.6 support)
 uv sync
 ```
 
-> The `[tool.uv.sources]` block in `pyproject.toml` points `torch`/`torchvision` to the PyTorch CUDA 12.4 index.
-> Comment it out on macOS — the default PyPI wheel already includes MPS.
+> The `pyproject.toml` file automatically directs Linux systems to the CUDA 12.6 PyTorch index, and macOS systems to the default PyPI MPS wheel. No manual editing required!
 
 Device priority in all scripts: **CUDA → MPS → CPU** (auto-detected).
 

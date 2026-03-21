@@ -2,7 +2,7 @@
 name = "biohack"
 version = "0.1.0"
 description = "Filament detection and segmentation pipeline for live-cell microscopy"
-requires-python = ">=3.11, <3.14"
+requires-python = ">=3.10"
 dependencies = [
     "tifffile>=2023.1.1",
     "numpy>=1.24",
@@ -14,13 +14,21 @@ dependencies = [
     "imageio-ffmpeg>=0.4.8",
 ]
 
-[tool.uv]
-find-links = [
-    "https://download.pytorch.org/whl/nightly/cu128/torch/",
-    "https://download.pytorch.org/whl/nightly/cu128/torchvision/",
-    "https://download.pytorch.org/whl/nightly/cu128/torchaudio/",
-    "https://download.pytorch.org/whl/nightly/cu128/pytorch-triton/",
+[tool.uv.sources]
+# PyTorch CUDA 12.6 (Stable) — Includes PTX forwarding for Blackwell GPUs
+# We tell uv to ONLY use this custom index on Linux. 
+# On macOS, it falls back to standard PyPI (which has the MPS wheels).
+torch = [
+  { index = "pytorch-cu126", marker = "sys_platform == 'linux'" }
 ]
+torchvision = [
+  { index = "pytorch-cu126", marker = "sys_platform == 'linux'" }
+]
+
+[[tool.uv.index]]
+name = "pytorch-cu126"
+url = "https://download.pytorch.org/whl/cu126"
+explicit = true
 
 [build-system]
 requires = ["hatchling"]
