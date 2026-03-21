@@ -75,16 +75,16 @@ Measure real-data statistics:
 python scripts/measure_real_data.py --data-dir tifs --output-dir outputs/real_stats
 ```
 
-Generate synthetic data from measured statistics:
-
-```bash
-python scripts/make_synthetic_dataset.py --stats-dir outputs/real_stats --output-dir outputs/synthetic --count 256 --split
-```
-
 Compare real and synthetic measurements:
 
 ```bash
 python scripts/compare_real_vs_synth.py --real-stats-dir outputs/real_stats --synth-dir outputs/synthetic --output-dir outputs/comparison
+```
+
+Measure 3D real-data statistics from `(T,Z,C,Y,X)` hyperstacks using channel 2 and sparse `masks3d` labels:
+
+```bash
+python scripts/measure_real_data_3d.py --data-dir manual_crops --mask-dir masks3d --output-dir outputs/real_stats_3d_labeled --labeled-only
 ```
 
 Optional baseline training on synthetic data:
@@ -92,6 +92,73 @@ Optional baseline training on synthetic data:
 ```bash
 python scripts/train_synth_baseline.py --synth-dir outputs/synthetic --output-dir outputs/training --epochs 10
 ```
+
+## Generation
+
+### 2D generation
+
+Generate a 2D synthetic dataset from measured 2D stats:
+
+```bash
+python scripts/make_synthetic_dataset.py --stats-dir outputs/real_stats --output-dir outputs/synthetic --count 256 --seed 0 --split
+```
+
+Example with measurement-time filament widening already baked into the stats:
+
+```bash
+python scripts/measure_real_data.py --data-dir tifs --output-dir outputs/real_stats_dilated --filament-dilation-px 1
+python scripts/make_synthetic_dataset.py --stats-dir outputs/real_stats_dilated --output-dir outputs/synthetic_dilated --count 256 --seed 0 --split
+```
+
+Compare the generated 2D data back to the real data:
+
+```bash
+python scripts/compare_real_vs_synth.py --real-stats-dir outputs/real_stats --synth-dir outputs/synthetic --output-dir outputs/comparison
+```
+
+### 3D generation
+
+First measure the 3D real data from `manual_crops/` and sparse filament labels in `masks3d/`:
+
+```bash
+python scripts/measure_real_data_3d.py --data-dir manual_crops --mask-dir masks3d --output-dir outputs/real_stats_3d_labeled --labeled-only
+```
+
+Generate synthetic 3D crops:
+
+```bash
+python scripts/make_synthetic_dataset_3d.py --stats-dir outputs/real_stats_3d_labeled --output-dir outputs/synthetic_3d --count 64 --seed 0 --filament-prob-per-cell 0.3
+```
+
+Example with larger, closer cells:
+
+```bash
+python scripts/make_synthetic_dataset_3d.py --stats-dir outputs/real_stats_3d_labeled --output-dir outputs/synthetic_3d --count 64 --seed 0 --filament-prob-per-cell 0.3 --cell-size-scale 1.5 --cell-spacing-scale 0.55
+```
+
+Compare the generated 3D data back to the measured 3D real stats:
+
+```bash
+python scripts/compare_real_vs_synth_3d.py --real-stats-dir outputs/real_stats_3d_labeled --synth-dir outputs/synthetic_3d --output-dir outputs/comparison_3d
+```
+
+### Generated outputs
+
+2D generation writes:
+
+- `outputs/synthetic/images/`
+- `outputs/synthetic/cell_masks/`
+- `outputs/synthetic/filament_masks/`
+- `outputs/synthetic/metadata/`
+- `outputs/synthetic/manifest.csv`
+
+3D generation writes:
+
+- `outputs/synthetic_3d/images/`
+- `outputs/synthetic_3d/cell_labels/`
+- `outputs/synthetic_3d/filament_masks/`
+- `outputs/synthetic_3d/metadata/`
+- `outputs/synthetic_3d/manifest.csv`
 
 ## Outputs
 
