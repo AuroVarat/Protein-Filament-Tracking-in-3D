@@ -1,3 +1,9 @@
 
 *.pyc
+__pycache__/
 env/*
+outputs/
+sam2*.pt
+MODELLING_DECISIONS.md
+tifs/*_f????_mask*.tif
+tifs/*_f????_cellmask_*.tif
