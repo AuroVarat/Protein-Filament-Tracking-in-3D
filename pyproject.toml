@@ -12,6 +12,7 @@ dependencies = [
     "torchvision>=0.15",
     "imageio>=2.28",
     "imageio-ffmpeg>=0.4.8",
+    "gradio>=6.9.0",
 ]
 
 [tool.uv.sources]

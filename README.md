@@ -4,6 +4,41 @@ A suite of Python scripts for loading, visualising, and ML-based segmentation of
 
 ---
 
+## 🦠 NEW: 3D Filament Pipeline (Z-Stack TIFFs)
+
+The 3D pipeline targets $(T, Z, H, W)$ multi-page TIFFs using anisotropic Z-pooling to handle shallow (e.g., $Z=5$) depths. All 3D scripts automatically extract the 2nd channel ($C=1$) from 5D data and perform per-slice 2D normalizations. Detailed specifics are found in `FILAMENT_3D_ML.md`.
+
+### 1. Annotate 3D Masks
+**For Remote Headless Servers (Recommended):**
+Generates a side-by-side panoramic web interface that stitches all 5 Z-planes horizontally for easy brush-painting.
+```bash
+uv run python scripts/filament_5z_painter_web.py tiffs3d/video.tif
+```
+(Access via browser at `http://localhost:7860`. Click **Save 3D Mask** to save)
+
+**For Local Machines with GUI:**
+Interactive 3-panel orthogonal viewer.
+```bash
+uv run python scripts/filament_3d_viewer.py tiffs3d/video.tif
+```
+(Use XYZ sliders, paint on any panel, press `[S]` to save)
+
+### 2. Train 3D U-Net
+Loads all explicitly annotated frames globally and drops empty ones, using 3D-aware augmentations (XYZ flips, XY rotations, etc).
+```bash
+uv run python scripts/train_3d.py tiffs3d/video1.tif tiffs3d/video2.tif
+```
+Saves the trained 3D architecture to `models/filament_unet3d.pt`.
+
+### 3. Generate 3D Inference MP4
+Evaluates all time frames in a video and renders a 2.5D semi-transparent stack (left half) accompanied by Maximum Intensity Projections (right half).
+```bash
+uv run python scripts/filament_3d_mp4.py tiffs3d/test_video.tif
+```
+Creates `test_video_inference.mp4`.
+
+---
+
 ## Setup
 
 ### macOS (Apple Silicon — MPS)
@@ -130,10 +165,10 @@ The script prints the best `pos_weight` value and tells you which line to edit i
 
 ```bash
 # 1-channel model (raw only)
-uv run python scripts/filament_segmenter.py tifs/new_video.tif
+uv run python scripts/filament_segmenter.py tifs/ch20_URA7_URA8_002-crop6.tif
 
 # 2-channel model (raw + ridge filter) — 4-column viewer
-uv run python scripts/filament_segmenter.py tifs/new_video.tif --ridge
+uv run python scripts/filament_segmenter.py tifs/ch20_URA7_URA8_002-crop6.tif --ridge
 ```
 
 ### Batch analysis + export CSV and summary figure

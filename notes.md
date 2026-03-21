@@ -1,0 +1,3 @@
+good training video
+ch20_URA7_URA8_001_hyperstack_crop_10_ch1_5z
+ch20_URA7_URA8_002_hyperstack_crop_48_ch1_5z

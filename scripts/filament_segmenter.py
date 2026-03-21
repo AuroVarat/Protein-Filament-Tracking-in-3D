@@ -155,11 +155,11 @@ def main():
     ot = ax_ov.set_title(f"Frame 0 — {'FILAMENT' if h0 else 'No filament'} ({px0} px)",
                          fontsize=11, color='#44ff44' if h0 else '#ff4444')
 
-    ax_sl = plt.axes([0.15, 0.06, 0.7, 0.03])
-    sl = Slider(ax_sl, 'Frame', 0, nf-1, valinit=0, valstep=1, initcolor='none')
+    import matplotlib.animation as animation
+    import imageio_ffmpeg
+    plt.rcParams['animation.ffmpeg_path'] = imageio_ffmpeg.get_ffmpeg_exe()
 
-    def update(val):
-        t = int(val)
+    def update(t):
         ir.set_data(normd[t])
         if use_ridge: irr.set_data(ridge_maps[t])
         ip.set_data(pred_probs[t])
@@ -167,11 +167,17 @@ def main():
         px = int(pxcounts[t]); h = px > 10
         ot.set_text(f"Frame {t} — {'FILAMENT' if h else 'No filament'} ({px} px)")
         ot.set_color('#44ff44' if h else '#ff4444')
-        fig.canvas.draw_idle()
+        return [ir, ip, ib, iovl] + ([irr] if use_ridge else [])
 
-    sl.on_changed(update)
-    print("\nLaunching segmentation viewer...")
-    plt.show()
+    print(f"\nGenerating and saving animation ({nf} frames) to MP4...")
+    ani = animation.FuncAnimation(fig, update, frames=nf, blit=False)
+    
+    os.makedirs('output', exist_ok=True)
+    base = os.path.splitext(os.path.basename(filepath))[0]
+    out_path = os.path.join('output', f"{base}_{'ridge' if use_ridge else 'raw'}_segmented.mp4")
+    
+    ani.save(out_path, writer='ffmpeg', fps=10)
+    print(f"Animation saved successfully to: {out_path}")
 
 if __name__ == "__main__":
     main()
