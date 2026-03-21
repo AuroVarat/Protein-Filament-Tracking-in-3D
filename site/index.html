@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TDA Filament Timeline Explorer</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="site-shell">
+      <nav class="page-nav reveal">
+        <a class="nav-link is-active" href="./index.html">2D Timeline</a>
+        <a class="nav-link" href="./3d.html">3D Explorer</a>
+      </nav>
+
+      <header class="hero reveal">
+        <div class="hero-copy">
+          <p class="eyebrow">Notebook To Interface</p>
+          <h1>TDA Filament Timeline Explorer</h1>
+          <p class="hero-text">
+            An interactive view of the filament-identification workflow from
+            <code>tda.ipynb</code>, translated into a frame-by-frame timeline of
+            dense early-forming components.
+          </p>
+        </div>
+        <div class="hero-stats" id="summary-cards"></div>
+      </header>
+
+      <main class="dashboard">
+        <section class="panel viewer-panel reveal">
+          <div class="panel-head">
+            <div>
+              <p class="panel-kicker">Selected Frame</p>
+              <h2 id="frame-title">Loading analysis...</h2>
+            </div>
+            <div class="badge-row">
+              <span class="status-badge" id="frame-status">Loading</span>
+              <span class="status-badge subtle" id="frame-score">Score</span>
+            </div>
+          </div>
+
+          <div class="viewer-stage">
+            <canvas id="frame-canvas" width="640" height="640"></canvas>
+            <div class="stage-legend">
+              <span><i class="legend-dot filament"></i>Recovered filament</span>
+              <span><i class="legend-dot backbone"></i>Backbone path</span>
+              <span><i class="legend-dot axis"></i>Principal axis</span>
+            </div>
+          </div>
+
+          <div class="control-grid">
+            <button id="play-toggle" class="pill-button" type="button">Play</button>
+            <label class="range-wrap">
+              <span>Frame</span>
+              <input id="frame-slider" type="range" min="0" max="0" step="1" value="0" />
+            </label>
+            <div class="toggle-row">
+              <label><input id="toggle-points" type="checkbox" checked /> Filament</label>
+              <label><input id="toggle-backbone" type="checkbox" checked /> Backbone</label>
+              <label><input id="toggle-axis" type="checkbox" checked /> Axis</label>
+            </div>
+          </div>
+
+          <div class="metric-grid" id="frame-metrics"></div>
+        </section>
+
+        <section class="panel timeline-panel reveal">
+          <div class="panel-head">
+            <div>
+              <p class="panel-kicker">Timespan</p>
+              <h2>Metric Timeline</h2>
+            </div>
+            <label class="select-wrap">
+              <span>Metric</span>
+              <select id="metric-select"></select>
+            </label>
+          </div>
+          <div class="chart-wrap">
+            <svg id="timeline-chart" viewBox="0 0 720 280" role="img" aria-label="Timeline chart"></svg>
+          </div>
+          <p class="chart-note">Click anywhere on the curve to jump to that frame.</p>
+        </section>
+
+        <section class="panel diagnostics-panel reveal">
+          <div class="panel-head">
+            <div>
+              <p class="panel-kicker">TDA Diagnostics</p>
+              <h2>Epsilon Sweep For The Current Frame</h2>
+            </div>
+          </div>
+          <div class="diagnostic-stack">
+            <div class="chart-wrap compact">
+              <svg id="components-chart" viewBox="0 0 720 220" role="img" aria-label="Connected components chart"></svg>
+            </div>
+            <div class="chart-wrap compact">
+              <svg id="score-chart" viewBox="0 0 720 220" role="img" aria-label="Dense line score chart"></svg>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel msd-panel reveal">
+          <div class="panel-head">
+            <div>
+              <p class="panel-kicker">Track Dynamics</p>
+              <h2>Centroid Mean Squared Displacement</h2>
+            </div>
+          </div>
+          <div class="chart-wrap">
+            <svg id="msd-chart" viewBox="0 0 720 260" role="img" aria-label="MSD chart"></svg>
+          </div>
+        </section>
+
+        <section class="panel findings-panel reveal">
+          <div class="panel-head">
+            <div>
+              <p class="panel-kicker">Notebook Findings</p>
+              <h2>What This Site Is Showing</h2>
+            </div>
+          </div>
+          <div class="findings-copy">
+            <div id="method-points" class="finding-list"></div>
+            <div class="parameter-block">
+              <h3>Run Parameters</h3>
+              <dl id="parameter-list"></dl>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel notable-panel reveal">
+          <div class="panel-head">
+            <div>
+              <p class="panel-kicker">Best Frames</p>
+              <h2>Strongest Recovered Filaments</h2>
+            </div>
+          </div>
+          <div id="notable-frames" class="notable-grid"></div>
+        </section>
+      </main>
+    </div>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

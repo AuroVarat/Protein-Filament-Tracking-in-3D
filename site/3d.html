@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>3D TDA Volume Explorer</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="site-shell">
+      <nav class="page-nav reveal">
+        <a class="nav-link" href="./index.html">2D Timeline</a>
+        <a class="nav-link is-active" href="./3d.html">3D Explorer</a>
+      </nav>
+
+      <header class="hero reveal">
+        <div class="hero-copy">
+          <p class="eyebrow">Hyperstack Interface</p>
+          <h1>3D TDA Volume Explorer</h1>
+          <p class="hero-text">
+            An interactive companion to the last sections of <code>tda.ipynb</code>,
+            showing 3D filament recovery through time with rotatable point clouds,
+            orthographic projections, and dynamics metrics.
+          </p>
+        </div>
+        <div class="hero-stats" id="summary-cards-3d"></div>
+      </header>
+
+      <main class="dashboard dashboard-3d">
+        <section class="panel viewer-panel reveal">
+          <div class="panel-head">
+            <div>
+              <p class="panel-kicker">Selected Volume</p>
+              <h2 id="volume-title">Loading analysis...</h2>
+            </div>
+            <div class="badge-row">
+              <span class="status-badge" id="volume-status">Loading</span>
+              <span class="status-badge subtle" id="volume-score">Score</span>
+            </div>
+          </div>
+
+          <div class="track-controls">
+            <label class="select-wrap">
+              <span>Track</span>
+              <select id="track-select"></select>
+            </label>
+            <button id="play-toggle-3d" class="pill-button" type="button">Play</button>
+            <button id="reset-view" class="pill-button secondary-button" type="button">Reset View</button>
+          </div>
+
+          <label class="range-wrap">
+            <span>Timepoint</span>
+            <input id="volume-slider" type="range" min="0" max="0" step="1" value="0" />
+          </label>
+
+          <div class="viewer-stage three-d-stage">
+            <canvas id="volume-canvas" width="920" height="600"></canvas>
+            <div class="stage-legend">
+              <span><i class="legend-dot sampled"></i>Weighted sample preview</span>
+              <span><i class="legend-dot filament"></i>Recovered filament</span>
+              <span><i class="legend-dot backbone"></i>Recovered backbone</span>
+              <span><i class="legend-dot axis"></i>Principal axis</span>
+            </div>
+            <p class="viewer-hint">Drag to rotate. The z dimension is visually stretched in this panel for readability.</p>
+          </div>
+
+          <div class="toggle-row">
+            <label><input id="toggle-sampled-3d" type="checkbox" checked /> Sampled cloud</label>
+            <label><input id="toggle-recovered-3d" type="checkbox" checked /> Recovered filament</label>
+            <label><input id="toggle-backbone-3d" type="checkbox" checked /> Backbone</label>
+            <label><input id="toggle-axis-3d" type="checkbox" checked /> Axis</label>
+          </div>
+
+          <div class="metric-grid" id="volume-metrics"></div>
+        </section>
+
+        <section class="panel projections-panel reveal">
+          <div class="panel-head">
+            <div>
+              <p class="panel-kicker">Orthographic Views</p>
+              <h2>XY, XZ, And YZ Projections</h2>
+            </div>
+          </div>
+          <div class="projection-grid">
+            <div class="projection-card">
+              <div class="projection-label">XY Projection</div>
+              <canvas id="xy-canvas" width="360" height="260"></canvas>
+            </div>
+            <div class="projection-card">
+              <div class="projection-label">XZ Projection</div>
+              <canvas id="xz-canvas" width="360" height="260"></canvas>
+            </div>
+            <div class="projection-card">
+              <div class="projection-label">YZ Projection</div>
+              <canvas id="yz-canvas" width="360" height="260"></canvas>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel timeline-panel reveal">
+          <div class="panel-head">
+            <div>
+              <p class="panel-kicker">Track Timeline</p>
+              <h2>Per-Volume Metric Curve</h2>
+            </div>
+            <label class="select-wrap">
+              <span>Metric</span>
+              <select id="metric-select-3d"></select>
+            </label>
+          </div>
+          <div class="chart-wrap">
+            <svg id="timeline-chart-3d" viewBox="0 0 720 280" role="img" aria-label="3D timeline chart"></svg>
+          </div>
+          <p class="chart-note">Click the curve to jump to a timepoint.</p>
+        </section>
+
+        <section class="panel diagnostics-panel reveal">
+          <div class="panel-head">
+            <div>
+              <p class="panel-kicker">TDA Diagnostics</p>
+              <h2>Epsilon Sweep For The Current Volume</h2>
+            </div>
+          </div>
+          <div class="diagnostic-stack">
+            <div class="chart-wrap compact">
+              <svg id="components-chart-3d" viewBox="0 0 720 220" role="img" aria-label="3D connected components chart"></svg>
+            </div>
+            <div class="chart-wrap compact">
+              <svg id="score-chart-3d" viewBox="0 0 720 220" role="img" aria-label="3D score chart"></svg>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel orientation-panel reveal">
+          <div class="panel-head">
+            <div>
+              <p class="panel-kicker">Orientation</p>
+              <h2>Yaw, Pitch, And Roll Through Time</h2>
+            </div>
+          </div>
+          <div class="chart-wrap">
+            <svg id="orientation-chart-3d" viewBox="0 0 720 280" role="img" aria-label="Orientation chart"></svg>
+          </div>
+        </section>
+
+        <section class="panel msd-panel reveal">
+          <div class="panel-head">
+            <div>
+              <p class="panel-kicker">Track Dynamics</p>
+              <h2>Centroid Mean Squared Displacement</h2>
+            </div>
+          </div>
+          <div class="chart-wrap">
+            <svg id="msd-chart-3d" viewBox="0 0 720 260" role="img" aria-label="3D MSD chart"></svg>
+          </div>
+        </section>
+
+        <section class="panel findings-panel reveal">
+          <div class="panel-head">
+            <div>
+              <p class="panel-kicker">Notebook Findings</p>
+              <h2>How The 3D View Maps To The Analysis</h2>
+            </div>
+          </div>
+          <div class="findings-copy">
+            <div id="method-points-3d" class="finding-list"></div>
+            <div class="parameter-block">
+              <h3>Run Parameters</h3>
+              <dl id="parameter-list-3d"></dl>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel notable-panel wide-panel reveal">
+          <div class="panel-head">
+            <div>
+              <p class="panel-kicker">Best Volumes</p>
+              <h2>Strongest Recovered 3D Filaments</h2>
+            </div>
+          </div>
+          <div id="notable-volumes" class="notable-grid"></div>
+        </section>
+      </main>
+    </div>
+
+    <script type="module" src="./app-3d.js"></script>
+  </body>
+</html>
