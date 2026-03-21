@@ -90,7 +90,7 @@ Saves to `models/filament_unet_ridge.pt`.
 uv run python -c "
 import sys; sys.path.insert(0, 'scripts')
 from filament_boxer import train_unet, train_unet_ridge
-tifs = ['tifs/video1.tif', 'tifs/video2.tif']
+tifs = ['tifs/ch20_URA7_URA8_002-crop4.tif', 'tifs/ch20_URA7_URA8_002-crop5.tif']
 train_unet(tifs)
 train_unet_ridge(tifs)
 "
