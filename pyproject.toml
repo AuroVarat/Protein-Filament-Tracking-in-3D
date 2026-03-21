@@ -19,11 +19,16 @@ dependencies = [
 # Comment these out on macOS (MPS is included in the default PyPI wheel)
 torch = { index = "pytorch-nightly-cu128" }
 torchvision = { index = "pytorch-nightly-cu128" }
-triton = { index = "pytorch-nightly-cu128" }
+triton = { index = "pytorch-nightly" }
 
 [[tool.uv.index]]
 name = "pytorch-nightly-cu128"
 url = "https://download.pytorch.org/whl/nightly/cu128"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-nightly"
+url = "https://download.pytorch.org/whl/nightly"
 explicit = true
 
 [build-system]
