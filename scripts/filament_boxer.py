@@ -28,6 +28,7 @@ from scipy import ndimage
 import os
 import sys
 import glob
+from utils import best_device
 
 
 # ─── Ridge Filter ────────────────────────────────────────────────────────────
