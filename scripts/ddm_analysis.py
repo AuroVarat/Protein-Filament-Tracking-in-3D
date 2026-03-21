@@ -2,6 +2,7 @@ import tifffile
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy import fftpack
+import sys
 
 def radial_profile(data, center):
     y, x = np.indices((data.shape))
@@ -13,7 +14,10 @@ def radial_profile(data, center):
     return radialprofile 
 
 def main():
-    file_path = "ch20_URA7_URA8_002-crop1.tif"
+    if len(sys.argv) > 1:
+        file_path = sys.argv[1]
+    else:
+        file_path = "tifs/ch20_URA7_URA8_002-crop4.tif"
     print(f"Loading {file_path} for DDM analysis...")
     
     try:
@@ -62,27 +66,23 @@ def main():
             radial_avg = radial_profile(avg_power_spectrum, center)
             I_q_dt[idx, :] = radial_avg[:max_radius]
         
-        print("\nDone calculating! Plotting results with physical units...")
+        print("\nDone calculating! Plotting results with physical size / frame units...")
         
         # Physical constants
         pixel_size_um = 0.183
-        time_interval_min = 15.0
         
-        # Convert axes to physical units
-        # physical_q = (radius_in_pixels * 2 * pi) / (Image_Width_in_pixels * pixel_size_um)
-        # However, for simplicity let's just create arrays for the real units
+        # Convert X-axis to physical units
         q_um_inv = np.arange(0, max_radius) * (2 * np.pi) / (w * pixel_size_um)
-        dt_minutes = dts * time_interval_min
         
         # Plotting the Image Structure Function I(q, dt)
         fig, axes = plt.subplots(1, 2, figsize=(14, 6))
         
         # 1. Heatmap contour of I(q, dt)
         im = axes[0].imshow(np.log10(I_q_dt + 1e-5), aspect='auto', cmap='viridis', origin='lower',
-                            extent=[q_um_inv[0], q_um_inv[-1], dt_minutes[0], dt_minutes[-1]])
+                            extent=[q_um_inv[0], q_um_inv[-1], dts[0], dts[-1]])
         axes[0].set_title("Image Structure Function $\log_{10}(I(q, \Delta t))$")
         axes[0].set_xlabel("Wavevector $q$ ($\mu m^{-1}$)")
-        axes[0].set_ylabel("Lag Time $\Delta t$ (minutes)")
+        axes[0].set_ylabel("Lag Time $\Delta t$ (frames)")
         fig.colorbar(im, ax=axes[0], label="$\log_{10}$ Intensity")
         
         # 2. Extract dynamics for a specific length scale (wavevector q)
@@ -91,10 +91,10 @@ def main():
             if q_idx < max_radius:
                 real_q = q_um_inv[q_idx]
                 real_length_um = (2 * np.pi) / real_q if real_q > 0 else float('inf')
-                axes[1].plot(dt_minutes, I_q_dt[:, q_idx], label=f"$q={real_q:.2f}$ (scale ~ {real_length_um:.1f} $\mu m$)")
+                axes[1].plot(dts, I_q_dt[:, q_idx], label=f"$q={real_q:.2f}$ (scale ~ {real_length_um:.1f} $\mu m$)")
                 
         axes[1].set_title("Dynamics at Specific Spatial Scales")
-        axes[1].set_xlabel("Lag Time $\Delta t$ (minutes)")
+        axes[1].set_xlabel("Lag Time $\Delta t$ (frames)")
         axes[1].set_ylabel("$I(q, \Delta t)$")
         axes[1].legend()
         axes[1].grid(True)

@@ -2,9 +2,13 @@ import tifffile
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Slider
+import sys
 
 def main():
-    file_path = "ch20_URA7_URA8_002-crop1.tif"
+    if len(sys.argv) > 1:
+        file_path = sys.argv[1]
+    else:
+        file_path = "tifs/ch20_URA7_URA8_002-crop1.tif"
     print(f"Loading {file_path}...")
     
     try:

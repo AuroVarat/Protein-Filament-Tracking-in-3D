@@ -1,0 +1,30 @@
+[project]
+name = "biohack"
+version = "0.1.0"
+description = "Filament detection and segmentation pipeline for live-cell microscopy"
+requires-python = ">=3.10"
+dependencies = [
+    "tifffile>=2023.1.1",
+    "numpy>=1.24",
+    "matplotlib>=3.7",
+    "scipy>=1.10",
+    "torch>=2.0",
+    "torchvision>=0.15",
+    "imageio>=2.28",
+    "imageio-ffmpeg>=0.4.8",
+]
+
+[tool.uv.sources]
+# PyTorch CUDA 12.4 — for Linux with NVIDIA GPU
+# Comment these out on macOS (MPS is included in the default PyPI wheel)
+torch = { index = "pytorch-cu124" }
+torchvision = { index = "pytorch-cu124" }
+
+[[tool.uv.index]]
+name = "pytorch-cu124"
+url = "https://download.pytorch.org/whl/cu124"
+explicit = true
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
