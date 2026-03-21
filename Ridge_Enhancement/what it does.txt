@@ -1,0 +1,32 @@
+It is designed to take a "movie" (a sequence of images over time) and mathematically trace, measure, and track tube-like structures—such as cellular filaments (microtubules, actin), blood vessels, or neurites—as they move and change.
+
+Here is the science and the conceptual breakdown of how the algorithm processes the image, step-by-step:
+
+1. Preprocessing & Background Subtraction
+Biological images, specifically in fluorescence microscopy, often suffer from uneven illumination, glowing halos, or background noise.
+
+The Concept: The script uses a "Rolling Ball" algorithm. Imagine the brightness of your image as a 3D mountainous landscape, where the filaments are sharp, narrow peaks and the background glow is a broad, rolling hill. The algorithm mathematically rolls a ball of a specific radius underneath this landscape. The ball is too big to fit inside the narrow filament peaks but perfectly traces the broad hills.
+By subtracting the ball's path from the original image, the script perfectly flattens the background to stark zero, leaving only the sharp filaments behind.
+2. Ridge Enhancement (Hessian-based Filtering)
+Once the background is flat, we need the computer to recognize what a "filament" is versus just a random bright spot.
+
+The Science: The script applies filters (like Meijering, Sato, or Frangi) that calculate the Hessian matrix across the image. The Hessian matrix measures the local curvature of the pixels in different directions.
+A "ridge" or tube has a very specific mathematical signature: it is highly curved in one direction (across its width) but completely flat in the perpendicular direction (along its length). By testing different sigmas (which correspond to different tube radii), the filter suppresses round blobs and flat spaces, and exclusively illuminates string-like, tubular structures.
+3. Hysteresis Thresholding
+Now the script has a grayscale map of "tubeness probability", and it needs to turn that into a strict black-and-white mask.
+
+The Concept: If you use a single hard cutoff, a filament that is bright in the middle but faint at the ends will be chopped into broken, disconnected pieces.
+Instead, Hysteresis takes two thresholds (high_q and low_q). It finds the absolute brightest, most undeniable parts of the filament using the high threshold. Then, it looks at the fainter pixels passing the low threshold and says: "I will only keep this faint pixel if it physically touches a bright, undeniable pixel." This preserves the delicate, continuous tails of the structures while ignoring isolated faint noise.
+4. Skeletonization
+By this point, the filament is a thick white snake on a black background.
+
+The Concept: To measure its true length and angle, the script uses Morphological Thinning to slowly peel away the outer pixels of the snake until exactly a 1-pixel-wide "skeleton" remains down the dead center. It's stripping away the varying thickness of the biology to leave pure math.
+5. Mathematical Extraction
+Now that it's a 1-pixel line, the script can extract geometry.
+
+The Science: It calculates the length (by walking from one endpoint to the other) and the exact center of mass (Centroid). Most interestingly, it calculates the Axial Angle using Singular Value Decomposition (SVD). SVD mathematically finds the primary axis of variance among the pixels, reliably calculating the true geometric trajectory/angle the filament is pointing in.
+6. Temporal Tracking (The Hungarian Algorithm)
+Finally, it has a list of lines in Frame 1, and a list of lines in Frame 2. Since biology is dynamic, the filaments have moved, rotated, and changed length. Which line in Frame 2 belongs to which line in Frame 1?
+
+The Science: The script calculates a "Cost" for every possible pairing between frames. The cost heavily penalizes segments that move too far, change their angle drastically, or shrink/grow wildly.
+It then routes this massive grid of costs into Linear Sum Assignment (often called the Hungarian Algorithm). This algorithm mathematically guarantees the absolute most optimal, globally lowest-cost matching of all filaments simultaneously. This bridges the individual segments frame-by-frame into continuous "Tracks", allowing you to study a single filament's precise velocity, rotation, and lifespan over time!

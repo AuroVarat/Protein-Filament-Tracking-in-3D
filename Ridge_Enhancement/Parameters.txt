@@ -1,0 +1,28 @@
+This image processing pipeline works in several stages to go from your raw 3D stack to the traced red lines. Here's a plain-language explanation of what each parameter in the dashboard controls:
+
+1. Bright Filaments (bright_filaments)
+
+What it does: Tells the algorithm whether the objects (filaments) you are looking for are brighter than the surrounding background (True), or darker (False).
+2. Background Radius (background_radius)
+
+What it does: The algorithm uses a "rolling ball" to estimate and subtract uneven background lighting so the image is perfectly flat.
+How to tune: This value should be larger than the width of the filament. If it's too small, the algorithm will think your filament is the background and accidentally erase it! Since your filament is about 13 pixels thick, 20-50 works great.
+3. Tube Widths (sigmas)
+
+What it does: After flattening the background, a "Ridge Filter" scans the image specifically hunting for tube-like, stringy structures. The sigmas are the sizes (radii) of the tubes it looks for.
+How to tune: If your filament looks very thick, increase these values (e.g. 2.0, 4.0, 6.0). If you are looking for ultra-thin, hairline structures, lower them (e.g. 1.0, 2.0).
+4. Quantile Thresholds (high_q & low_q)
+
+What it does: The Ridge Filter scores every pixel based on "how much it looks like a tube". Next, we have to turn those scores into a rigid black-and-white mask.
+high_q: The strict threshold. If you set it to 0.96, only the top 4% most intense tube-like pixels are marked as "Definitely a filament".
+low_q: The relaxed threshold. Any pixel above this cutoff is kept ONLY IF it physically touches a pixel that passed the high_q strict test.
+How to tune: This hysteresis technique allows you to capture faint tails of a filament (via low_q) without accidentally picking up random background noise across the whole image.
+5. Clean-Up (remove_objects_leq & remove_holes_leq)
+
+What it does: Polishes the black-and-white mask.
+remove_objects_leq: Deletes any random, disconnected glowing specs (noise) that are smaller than this area in pixels.
+remove_holes_leq: If there are tiny dark gaps inside the filament mask, this fills them in so the filament is totally solid.
+6. Min Branch Length (min_branch_length_px)
+
+What it does: As a final step, the solid mask is collapsed down into a 1-pixel wide "skeleton". Sometimes skeletons have tiny weird "spurs" shooting off the sides. This tosses out any traced line that is shorter than this length.
+If you adjust low_q or high_q on the dashboard right now, you should instantly see how the red tracing overlay either stretches further down the faint edges of the filament, or shrinks back! Let me know if you want to dial in specifically on one of them.
