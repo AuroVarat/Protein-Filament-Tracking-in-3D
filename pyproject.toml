@@ -15,20 +15,14 @@ dependencies = [
 ]
 
 [tool.uv.sources]
-# PyTorch CUDA 12.8 (Nightly) — Required for RTX 5090 (Blackwell / sm_120)
+# PyTorch CUDA 12.6 (Stable) — Includes PTX forwarding for Blackwell GPUs
 # Comment these out on macOS (MPS is included in the default PyPI wheel)
-torch = { index = "pytorch-nightly-cu128" }
-torchvision = { index = "pytorch-nightly-cu128" }
-triton = { index = "pytorch-nightly" }
+torch = { index = "pytorch-cu126" }
+torchvision = { index = "pytorch-cu126" }
 
 [[tool.uv.index]]
-name = "pytorch-nightly-cu128"
-url = "https://download.pytorch.org/whl/nightly/cu128"
-explicit = true
-
-[[tool.uv.index]]
-name = "pytorch-nightly"
-url = "https://download.pytorch.org/whl/nightly"
+name = "pytorch-cu126"
+url = "https://download.pytorch.org/whl/cu126"
 explicit = true
 
 [build-system]
