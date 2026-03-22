@@ -2,10 +2,11 @@
 """
 Create figure summaries based on the filament dynamics tables.
 
-Produces three plots:
-  1. Histogram of per-filament mean robust length with the user-specified lower tail highlighted.
-  2. Scatter of mean robust length versus z-plane count to visualize dot-like tracks.
+Produces four plots:
+  1. Histogram of per-filament maximum robust length with the user-specified lower tail highlighted.
+  2. Scatter of maximum robust length versus z-plane count to visualize dot-like tracks.
   3. Arc-length bar plot with 95% CI (from the length-estimate table) per video.
+  4. Histogram of XY slice lengths above a configurable cutoff.
 
 Produces PNG files in the specified output directory (default `output/`).
 """
@@ -43,6 +44,11 @@ def parse_args() -> argparse.Namespace:
         help="Length estimate table with CI values.",
     )
     parser.add_argument(
+        "--xy-slice-csv",
+        default="output/filament_xy_slice_measurements.csv",
+        help="Per-slice XY filament length measurements.",
+    )
+    parser.add_argument(
         "--output-dir",
         default="output",
         help="Directory to write the generated figure PNGs.",
@@ -53,6 +59,12 @@ def parse_args() -> argparse.Namespace:
         default=0.1,
         help="Lower-tail percentile used to mark the histogram cut-off.",
     )
+    parser.add_argument(
+        "--xy-hist-min-length-um",
+        type=float,
+        default=0.9,
+        help="Minimum XY slice length included in the XY histogram.",
+    )
     return parser.parse_args()
 
 
@@ -61,13 +73,13 @@ def ensure_output_dir(path: Path) -> None:
 
 
 def plot_size_histogram(summary: pd.DataFrame, quantile: float, path: Path) -> None:
-    threshold = float(summary["mean_length_um"].quantile(float(quantile)))
+    threshold = float(summary["max_length_um"].quantile(float(quantile)))
     fig, ax = plt.subplots(figsize=(6, 4))
-    ax.hist(summary["mean_length_um"], bins=30, color="#5B8FF9", edgecolor="black")
+    ax.hist(summary["max_length_um"], bins=30, color="#5B8FF9", edgecolor="black")
     ax.axvline(threshold, color="#F46C93", linestyle="--", label=f"{quantile*100:.0f}th %ile")
-    ax.set_xlabel("Mean filament length (um)")
+    ax.set_xlabel("Largest filament length in video (um)")
     ax.set_ylabel("Count")
-    ax.set_title("Filament length distribution")
+    ax.set_title("Per-filament maximum length distribution")
     ax.legend()
     fig.tight_layout()
     fig.savefig(path)
@@ -77,14 +89,14 @@ def plot_size_histogram(summary: pd.DataFrame, quantile: float, path: Path) -> N
 def plot_z_plane_vs_size(summary: pd.DataFrame, path: Path) -> None:
     fig, ax = plt.subplots(figsize=(6, 4))
     scatter = ax.scatter(
-        summary["mean_length_um"],
+        summary["max_length_um"],
         summary["max_z_plane_count"],
         c=summary["directionality"],
         cmap="viridis",
         edgecolor="black",
         linewidth=0.5,
     )
-    ax.set_xlabel("Mean filament length (um)")
+    ax.set_xlabel("Largest filament length in video (um)")
     ax.set_ylabel("Distinct z-planes seen")
     ax.set_title("Length vs. z-plane coverage")
     cbar = fig.colorbar(scatter, ax=ax)
@@ -118,26 +130,51 @@ def plot_length_errorbars(length_df: pd.DataFrame, path: Path) -> None:
     plt.close(fig)
 
 
+def plot_xy_slice_histogram(xy_slice_df: pd.DataFrame, min_length_um: float, path: Path) -> None:
+    if xy_slice_df.empty:
+        return
+
+    plot_df = xy_slice_df.loc[xy_slice_df["xy_length_um"] >= float(min_length_um)].copy()
+    if plot_df.empty:
+        return
+
+    fig, ax = plt.subplots(figsize=(6, 4))
+    ax.hist(plot_df["xy_length_um"], bins=30, color="#FA8C16", edgecolor="black")
+    ax.axvline(float(min_length_um), color="#262626", linestyle="--", label=f">= {min_length_um:.2f} um")
+    ax.set_xlabel("XY slice filament length (um)")
+    ax.set_ylabel("Count")
+    ax.set_title("XY slice lengths above threshold")
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig(path)
+    plt.close(fig)
+
+
 def run_plot(
     summary_csv: Path,
     processed_csv: Path | None,
     length_csv: Path,
+    xy_slice_csv: Path | None,
     output_dir: Path,
     size_tail_quantile: float,
+    xy_hist_min_length_um: float,
 ) -> None:
     ensure_output_dir(output_dir)
     summary = pd.read_csv(summary_csv)
     length_df = pd.read_csv(length_csv) if length_csv.exists() else pd.DataFrame()
+    xy_slice_df = pd.read_csv(xy_slice_csv) if xy_slice_csv and xy_slice_csv.exists() else pd.DataFrame()
     filtered = None
     if processed_csv and processed_csv.exists():
         filtered = pd.read_csv(processed_csv)
     hist_path = output_dir / "filament_length_hist.png"
     scatter_path = output_dir / "mean_length_vs_z_planes.png"
     bars_path = output_dir / "arc_length_ci.png"
+    xy_hist_path = output_dir / "xy_slice_length_hist.png"
     plot_df = filtered if filtered is not None and not filtered.empty else summary
     plot_size_histogram(plot_df, size_tail_quantile, hist_path)
     plot_z_plane_vs_size(plot_df, scatter_path)
     plot_length_errorbars(length_df, bars_path)
+    plot_xy_slice_histogram(xy_slice_df, xy_hist_min_length_um, xy_hist_path)
     print(f"Plots saved to {output_dir}")
 
 
@@ -147,8 +184,10 @@ def main() -> None:
         Path(args.summary_csv),
         Path(args.processed_csv),
         Path(args.length_csv),
+        Path(args.xy_slice_csv),
         Path(args.output_dir),
         args.size_tail_quantile,
+        args.xy_hist_min_length_um,
     )
 
 

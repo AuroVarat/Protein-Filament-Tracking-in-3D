@@ -76,6 +76,12 @@ def parse_args() -> argparse.Namespace:
         help="Minimum number of accepted frame observations per filament.",
     )
     parser.add_argument(
+        "--min-consecutive-frames",
+        type=int,
+        default=3,
+        help="Minimum longest run of consecutive accepted frames per filament.",
+    )
+    parser.add_argument(
         "--size-tail-quantile",
         type=float,
         default=0.1,
@@ -91,6 +97,17 @@ def parse_args() -> argparse.Namespace:
         "--length-estimate-csv",
         default="output/filament_length_estimate.csv",
         help="Per-video robust-length estimate with error bars.",
+    )
+    parser.add_argument(
+        "--xy-slice-measurements-csv",
+        default="output/filament_xy_slice_measurements.csv",
+        help="Per-slice XY filament length measurements for histogramming.",
+    )
+    parser.add_argument(
+        "--xy-hist-min-length-um",
+        type=float,
+        default=0.9,
+        help="Minimum XY slice length kept for the XY histogram.",
     )
     parser.add_argument(
         "--plot-output-dir",
@@ -109,16 +126,20 @@ def collect_mask_files(mask_dir: Path) -> Iterable[Path]:
 
 
 def compute_length_metrics(coords_um: np.ndarray) -> tuple[float, float, float]:
+    dims = coords_um.shape[1] if coords_um.ndim == 2 else 0
     if coords_um.shape[0] < 2:
         return 0.0, 0.0, 0.0
 
     centered = coords_um - coords_um.mean(axis=0, keepdims=True)
     cov = np.cov(centered, rowvar=False)
+    cov = np.atleast_2d(cov)
     evals, evecs = np.linalg.eigh(cov)
     principal_axis = evecs[:, int(np.argmax(evals))]
     axis_norm = np.linalg.norm(principal_axis)
     if axis_norm == 0.0:
-        principal_axis = np.array([1.0, 0.0, 0.0], dtype=np.float64)
+        principal_axis = np.zeros(dims, dtype=np.float64)
+        if dims:
+            principal_axis[0] = 1.0
     else:
         principal_axis = principal_axis / axis_norm
 
@@ -172,8 +193,9 @@ def load_frame_measurements(
     tif_dir: Path,
     pixel_size_xy: float,
     z_spacing_um: float,
-) -> pd.DataFrame:
-    records: list[dict] = []
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    frame_records: list[dict] = []
+    xy_slice_records: list[dict] = []
     for mask_path in collect_mask_files(mask_dir):
         video_name = mask_path.stem.replace("_mask", "")
         tif_path = tif_dir / f"{video_name}.tif"
@@ -220,7 +242,35 @@ def load_frame_measurements(
                 )
                 intensities = frame_raw[frame_mask == filament_id]
 
-                records.append(
+                slice_lengths_um: list[float] = []
+                for z_idx in np.unique(coords_zyx[:, 0]):
+                    slice_coords = coords_zyx[coords_zyx[:, 0] == z_idx][:, [2, 1]].astype(np.float64)
+                    slice_coords *= pixel_size_xy
+                    slice_robust_length_um, slice_span_length_um, slice_arc_length_um = (
+                        compute_length_metrics(slice_coords)
+                    )
+                    slice_length_um = float(
+                        max(slice_robust_length_um, slice_span_length_um, slice_arc_length_um)
+                    )
+                    slice_lengths_um.append(slice_length_um)
+                    xy_slice_records.append(
+                        {
+                            "video": video_name,
+                            "frame": int(frame),
+                            "filament_id": filament_id,
+                            "z_index": int(z_idx),
+                            "xy_robust_length_um": float(slice_robust_length_um),
+                            "xy_span_length_um": float(slice_span_length_um),
+                            "xy_arc_length_um": float(slice_arc_length_um),
+                            "xy_length_um": slice_length_um,
+                            "xy_pixel_length": float(slice_length_um / pixel_size_xy)
+                            if pixel_size_xy > 0
+                            else 0.0,
+                            "xy_pixel_count": int(slice_coords.shape[0]),
+                        }
+                    )
+
+                frame_records.append(
                     {
                         "video": video_name,
                         "frame": int(frame),
@@ -237,13 +287,17 @@ def load_frame_measurements(
                         "robust_length_um": float(robust_length_um),
                         "span_length_um": float(span_length_um),
                         "arc_length_um": float(arc_length_um),
+                        "max_xy_slice_length_um": float(max(slice_lengths_um, default=0.0)),
                         "mean_intensity": float(intensities.mean()),
                         "sum_intensity": float(intensities.sum()),
                         "max_intensity": float(intensities.max()),
                     }
                 )
 
-    return pd.DataFrame.from_records(records)
+    return (
+        pd.DataFrame.from_records(frame_records),
+        pd.DataFrame.from_records(xy_slice_records),
+    )
 
 
 def filter_frame_measurements(
@@ -267,6 +321,7 @@ def summarize_tracks(
     frame_df: pd.DataFrame,
     frame_interval_min: float,
     min_observations: int,
+    min_consecutive_frames: int,
 ) -> pd.DataFrame:
     if frame_df.empty:
         return pd.DataFrame()
@@ -279,6 +334,19 @@ def summarize_tracks(
             continue
 
         frames = group["frame"].to_numpy()
+        max_consecutive_frames = 1
+        if len(frames) > 1:
+            current_run = 1
+            for delta in np.diff(frames):
+                if delta == 1:
+                    current_run += 1
+                else:
+                    max_consecutive_frames = max(max_consecutive_frames, current_run)
+                    current_run = 1
+            max_consecutive_frames = max(max_consecutive_frames, current_run)
+        if max_consecutive_frames < min_consecutive_frames:
+            continue
+
         centroids = group[["centroid_x_um", "centroid_y_um", "centroid_z_um"]].to_numpy()
         if len(frames) > 1:
             delta_frames = np.diff(frames)
@@ -310,13 +378,20 @@ def summarize_tracks(
                 "video": video,
                 "filament_id": int(filament_id),
                 "observations": int(len(group)),
+                "max_consecutive_frames": int(max_consecutive_frames),
                 "first_frame": int(frames[0]),
                 "last_frame": int(frames[-1]),
                 "lifetime_min": lifetime_min,
+                "min_length_um": float(group["robust_length_um"].min()),
                 "mean_length_um": float(group["robust_length_um"].mean()),
                 "max_length_um": float(group["robust_length_um"].max()),
+                "length_std_um": float(group["robust_length_um"].std(ddof=0)),
+                "length_range_um": float(
+                    group["robust_length_um"].max() - group["robust_length_um"].min()
+                ),
                 "mean_span_length_um": float(group["span_length_um"].mean()),
                 "mean_arc_length_um": float(group["arc_length_um"].mean()),
+                "max_xy_slice_length_um": float(group["max_xy_slice_length_um"].max()),
                 "length_change_rate_um_per_min": length_change_rate,
                 "arc_trajectory_um": float(group["arc_length_um"].sum()),
                 "net_displacement_um": net_displacement_um,
@@ -373,7 +448,8 @@ def print_highlights(summary: pd.DataFrame, filtered: pd.DataFrame | None = None
     )
     print(
         f"- Median lifetime: {display_df['lifetime_min'].median():.1f} min; "
-        f"median length: {display_df['mean_length_um'].median():.2f} um; "
+        f"median mean length: {display_df['mean_length_um'].median():.2f} um; "
+        f"median max length: {display_df['max_length_um'].median():.2f} um; "
         f"median arc length: {display_df['mean_arc_length_um'].median():.2f} um."
     )
     print(
@@ -412,7 +488,7 @@ def main() -> None:
     mask_dir = Path(args.mask_dir)
     tif_dir = Path(args.tif_dir)
 
-    frame_df = load_frame_measurements(
+    frame_df, xy_slice_df = load_frame_measurements(
         mask_dir=mask_dir,
         tif_dir=tif_dir,
         pixel_size_xy=args.pixel_size_xy,
@@ -423,9 +499,14 @@ def main() -> None:
         return
 
     frame_path = Path(args.frame_measurements_csv)
+    xy_slice_path = Path(args.xy_slice_measurements_csv)
     ensure_parent(frame_path)
+    ensure_parent(xy_slice_path)
     frame_df.to_csv(frame_path, index=False)
     print(f"Frame-level measurements written to {frame_path}")
+    if not xy_slice_df.empty:
+        xy_slice_df.to_csv(xy_slice_path, index=False)
+        print(f"XY slice measurements written to {xy_slice_path}")
 
     filtered_frames, size_threshold = filter_frame_measurements(
         frame_df,
@@ -436,6 +517,7 @@ def main() -> None:
         filtered_frames,
         frame_interval_min=args.frame_interval_min,
         min_observations=args.min_observations,
+        min_consecutive_frames=args.min_consecutive_frames,
     )
     if summary.empty:
         print("No filaments survive filtering and minimum observation requirements.")
@@ -461,8 +543,10 @@ def main() -> None:
         short_path,
         processed_path,
         length_path,
+        xy_slice_path,
         Path(args.plot_output_dir),
         args.size_tail_quantile,
+        args.xy_hist_min_length_um,
     )
     report_strongest_signal(filtered_frames)
     report_bendiest_filament(summary)

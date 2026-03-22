@@ -212,12 +212,12 @@ Training for 100 epochs... (Auto: False)
   Epoch 91/100  Loss:0.1041  Dice:0.648
   Epoch 92/100  Loss:0.1016  Dice:0.653
   Epoch 93/100  Loss:0.1010  Dice:0.656
-  Epoch 94/100  Loss:0.1038  Dice:0.636
-  Epoch 95/100  Loss:0.1023  Dice:0.644
-  Epoch 96/100  Loss:0.1005  Dice:0.649
-  Epoch 97/100  Loss:0.0999  Dice:0.649
-  Epoch 98/100  Loss:0.1032  Dice:0.652
-  Epoch 99/100  Loss:0.1030  Dice:0.645
-  Epoch 100/100  Loss:0.1012  Dice:0.657
+  Epoch 94/100  Loss:0.1032  Dice:0.649
+  Epoch 95/100  Loss:0.1026  Dice:0.646
+  Epoch 96/100  Loss:0.1032  Dice:0.645
+  Epoch 97/100  Loss:0.1018  Dice:0.652
+  Epoch 98/100  Loss:0.1038  Dice:0.653
+  Epoch 99/100  Loss:0.1001  Dice:0.657
+  Epoch 100/100  Loss:0.1005  Dice:0.655
 
 Saved trained 2D Temporal model to models/filament_unet2d_temporal.pt
