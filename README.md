@@ -376,3 +376,14 @@ export DISPLAY=:99
 ```
 
 The **analyser** (`filament_analyser.py`) is display-free — it only saves files and runs fine headlessly.
+
+---
+
+## Other Branches
+
+`mlsnake` can be ignored. Its development work has already been merged into `main`.
+
+1. `Synthetic Data` - our implementation to create synthetic data.
+2. `segmentation_cropping` - basic filtering and segmentation to detect filament.
+3. `web and TDA` - for TDA analysis to detect filaments.
+4. Other branches are related to dashboard development.
