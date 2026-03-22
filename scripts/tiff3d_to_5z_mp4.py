@@ -26,10 +26,9 @@ def load_data(filepath, channel=0):
     # Normalize per Z-slice for maximum per-frame visibility
     norm = np.zeros_like(img)
     for t in range(T):
-        for z in range(Z):
-            mn, mx = img[t, z].min(), img[t, z].max()
-            if mx > mn:
-                norm[t, z] = (img[t, z] - mn) / (mx - mn)
+        mn, mx = img[t].min(), img[t].max()
+        if mx > mn:
+            norm[t] = (img[t] - mn) / (mx - mn)
     return norm
 
 def create_5z_frame(vol):

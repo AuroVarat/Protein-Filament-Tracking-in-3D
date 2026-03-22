@@ -1,0 +1,35 @@
+nohup: ignoring input
+Discovered 4 TIFF files: tiffs3d/ch20_URA7_URA8_002_hyperstack_crop_44.tif, tiffs3d/ch20_URA7_URA8_002_hyperstack_crop_45.tif, tiffs3d/ch20_URA7_URA8_002_hyperstack_crop_55.tif, tiffs3d/ch20_URA7_URA8_002_hyperstack_crop_57.tif
+Loading tiffs3d/ch20_URA7_URA8_002_hyperstack_crop_44.tif...
+Loading tiffs3d/ch20_URA7_URA8_002_hyperstack_crop_45.tif...
+Loading tiffs3d/ch20_URA7_URA8_002_hyperstack_crop_55.tif...
+Loading tiffs3d/ch20_URA7_URA8_002_hyperstack_crop_57.tif...
+Initializing Temporal model from models/filament_unet3d.pt
+
+Temporal 3D Model params: 1,359,859 (cuda)
+Class balance pos_weight = 10.0 (raw=1446)
+
+Training for 100 epochs...
+  Epoch  1/100  Loss:0.1806  Dice:0.396
+  Epoch  5/100  Loss:0.1798  Dice:0.379
+  Epoch 10/100  Loss:0.1815  Dice:0.372
+  Epoch 15/100  Loss:0.2005  Dice:0.314
+  Epoch 20/100  Loss:0.1731  Dice:0.402
+  Epoch 25/100  Loss:0.1956  Dice:0.344
+  Epoch 30/100  Loss:0.1653  Dice:0.429
+  Epoch 35/100  Loss:0.1529  Dice:0.457
+  Epoch 40/100  Loss:0.1440  Dice:0.487
+  Epoch 45/100  Loss:0.1317  Dice:0.528
+  Epoch 50/100  Loss:0.1316  Dice:0.536
+  Epoch 55/100  Loss:0.1242  Dice:0.558
+  Epoch 60/100  Loss:0.1205  Dice:0.573
+  Epoch 65/100  Loss:0.1220  Dice:0.551
+  Epoch 70/100  Loss:0.1221  Dice:0.555
+  Epoch 75/100  Loss:0.1063  Dice:0.597
+  Epoch 80/100  Loss:0.1110  Dice:0.585
+  Epoch 85/100  Loss:0.1107  Dice:0.588
+  Epoch 90/100  Loss:0.1021  Dice:0.600
+  Epoch 95/100  Loss:0.1081  Dice:0.597
+  Epoch 100/100  Loss:0.1007  Dice:0.615
+
+Saved trained Temporal 3D model to models/filament_unet3d_temporal.pt (Final Dice: 0.615)

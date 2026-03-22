@@ -4,7 +4,8 @@ Filament 3D Trainer
 
 Trains the 3D U-Net on annotated z-stack volumes.
 Usage:
-    python train_3d.py tifs3d/volume1.tif [tifs3d/volume2.tif ...]
+    python train_3d.py [tifs3d/volume1.tif ...]
+    (If no files are specified, it will automatically find TIFFs matching the saved masks)
 """
 
 import sys
@@ -15,6 +16,7 @@ import tifffile
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import argparse
 from torch.utils.data import DataLoader
 
 from unet3d import TinyUNet3D, SegDataset3D, dice_loss
@@ -34,10 +36,9 @@ def load_data(filepath):
     T, Z, H, W = img.shape
     norm = np.zeros_like(img)
     for t in range(T):
-        for z in range(Z):
-            mn, mx = img[t, z].min(), img[t, z].max()
-            if mx > mn:
-                norm[t, z] = (img[t, z] - mn) / (mx - mn)
+        mn, mx = img[t].min(), img[t].max()
+        if mx > mn:
+            norm[t] = (img[t] - mn) / (mx - mn)
     return norm
 
 def load_paired_volumes(tif_files):
@@ -61,15 +62,23 @@ def load_paired_volumes(tif_files):
         print(f"Loading {fp}...")
         norm_data = load_data(fp)
         
+        added_frames = set()
         for t in range(norm_data.shape[0]):
             key = f"{base}_t{t:04d}"
             if key in mask_lookup:
                 volumes.append(norm_data[t])
                 masks.append(mask_lookup[key])
+                added_frames.add(t)
+                
+        # Force add first 3 frames as negative data if not already annotated
+        for t in range(min(3, norm_data.shape[0])):
+            if t not in added_frames:
+                volumes.append(norm_data[t])
+                masks.append(np.zeros_like(norm_data[t], dtype=np.float32))
 
     pos = sum(1 for m in masks if m.max() > 0)
     neg = len(masks) - pos
-    print(f"Loaded {len(volumes)} explicitly annotated 3D volumes ({pos} positive + {neg} empty masks)")
+    print(f"Loaded {len(volumes)} total 3D volumes ({pos} positive explicitly annotated + {neg} empty/negative backgrounds)")
     
     if pos == 0:
         print("Error: None of the loaded videos match the available masks.")
@@ -77,12 +86,55 @@ def load_paired_volumes(tif_files):
         
     return volumes, masks
 
-def main():
-    if len(sys.argv) < 2:
-        print("Usage: python train_3d.py <volume1.tif> [volume2.tif ...]")
-        sys.exit(1)
+def discover_tifs():
+    """Finds TIFF files corresponding to available masks."""
+    masks = glob.glob(os.path.join(MASK_DIR, "*.npy"))
+    if not masks:
+        return []
+    
+    # Extract unique TIFF basenames from masks (basename_t0000.npy -> basename)
+    tif_bases = set()
+    for m in masks:
+        base = os.path.basename(m)
+        # Split by _t and take everything before the last occurrence
+        if "_t" in base:
+            tif_bases.add(base.rsplit("_t", 1)[0])
+        else:
+            tif_bases.add(os.path.splitext(base)[0])
+            
+    # Search for these TIFFs in standard locations
+    found_tifs = []
+    search_dirs = [".", "tiffs3d"]
+    for base in sorted(tif_bases):
+        found = False
+        for d in search_dirs:
+            path = os.path.join(d, f"{base}.tif")
+            if os.path.exists(path):
+                found_tifs.append(path)
+                found = True
+                break
+        if not found:
+            print(f"Warning: Could not find TIFF for mask base '{base}' in {search_dirs}")
+            
+    return found_tifs
 
-    tif_files = sys.argv[1:]
+def main():
+    parser = argparse.ArgumentParser(description="Filament 3D Trainer")
+    parser.add_argument("tifs", nargs="*", help="Input TIFF volumes")
+    parser.add_argument("--epochs", type=int, default=30, help="Number of training epochs")
+    parser.add_argument("--batch-size", type=int, default=4, help="Batch size")
+    parser.add_argument("--lr", type=float, default=1e-3, help="Learning rate")
+    args = parser.parse_args()
+
+    tif_files = args.tifs
+    if not tif_files:
+        print("No volumes specified. Discovering from masks...")
+        tif_files = discover_tifs()
+        if not tif_files:
+            print(f"Error: No TIFF files found for masks in {MASK_DIR}.")
+            sys.exit(1)
+        print(f"Discovered {len(tif_files)} TIFF files: {', '.join(tif_files)}")
+
     volumes, masks = load_paired_volumes(tif_files)
     if volumes is None:
         sys.exit(1)
@@ -92,10 +144,10 @@ def main():
     print(f"\n3D Model params: {sum(p.numel() for p in model.parameters()):,} ({device})")
 
     ds = SegDataset3D(volumes, masks, augment_factor=10)
-    # Batch size 2 or 4 since 3D data takes more RAM
-    dl = DataLoader(ds, batch_size=4, shuffle=True, num_workers=0)
+    # Batch size from args
+    dl = DataLoader(ds, batch_size=args.batch_size, shuffle=True, num_workers=0)
 
-    opt = optim.Adam(model.parameters(), lr=1e-3)
+    opt = optim.Adam(model.parameters(), lr=args.lr)
     
     pos_pixels = max(float(sum(m.sum() for m in masks)), 1.0)
     tot_pixels = float(sum(m.size for m in masks))
@@ -105,9 +157,9 @@ def main():
     
     bce_loss = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
 
-    print(f"\nTraining for 30 epochs...")
+    print(f"\nTraining for {args.epochs} epochs...")
     model.train()
-    for epoch in range(30):
+    for epoch in range(args.epochs):
         tloss, tdice, nb = 0, 0, 0
         for bx, by in dl:
             bx, by = bx.to(device), by.to(device)

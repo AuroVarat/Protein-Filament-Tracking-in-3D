@@ -30,12 +30,25 @@ uv run python scripts/train_3d.py tiffs3d/video1.tif tiffs3d/video2.tif
 ```
 Saves the trained 3D architecture to `models/filament_unet3d.pt`.
 
-### 3. Generate 3D Inference MP4
-Evaluates all time frames in a video and renders a 2.5D semi-transparent stack (left half) accompanied by Maximum Intensity Projections (right half).
+### 3. Explore 3D Results
+**Interactive Results Dashboard (Recommended):**
+Explore results interactively with toggleable mask overlays, a 2.5D volumetric stack, and Fiji-style orthogonal MIPs across time.
 ```bash
-uv run python scripts/filament_3d_mp4.py tiffs3d/test_video.tif
+uv run python scripts/filament_3d_dashboard.py
 ```
-Creates `test_video_inference.mp4`.
+
+**Generate 3D Inference MP4:**
+Renders a 3-row video: raw panorama, mask panorama, and [2.5D stack + Ortho-Grid Grid].
+```bash
+uv run python scripts/filament_3d_mp4.py tiffs3d/video.tif
+```
+(Saves as `tiffs3d/video_inference.mp4`)
+
+**Interactive Local Viewer (Inference):**
+Runs the model on a volume and opens the orthogonal viewer with model predictions overlaid.
+```bash
+uv run python scripts/filament_3d_segmenter.py tiffs3d/video.tif
+```
 
 ---
 

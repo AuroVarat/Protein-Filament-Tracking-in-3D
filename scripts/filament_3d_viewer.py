@@ -42,10 +42,9 @@ def load_data(filepath):
     # Normalize per 2D slice
     norm = np.zeros_like(img)
     for t in range(T):
-        for z in range(Z):
-            mn, mx = img[t, z].min(), img[t, z].max()
-            if mx > mn:
-                norm[t, z] = (img[t, z] - mn) / (mx - mn)
+        mn, mx = img[t].min(), img[t].max()
+        if mx > mn:
+            norm[t] = (img[t] - mn) / (mx - mn)
     return norm
 
 def mask_path(filepath, t_idx):
