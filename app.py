@@ -9,6 +9,7 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
 import tifffile
@@ -42,6 +43,17 @@ def apply_app_styles() -> None:
                 radial-gradient(circle at top left, rgba(85, 144, 111, 0.12), transparent 30%),
                 linear-gradient(180deg, #f8fbf9 0%, var(--app-bg) 100%);
             color: var(--text-main);
+        }
+
+        #MainMenu,
+        header,
+        footer,
+        [data-testid="stHeader"],
+        [data-testid="stToolbar"],
+        [data-testid="stDecoration"],
+        [data-testid="stStatusWidget"] {
+            display: none !important;
+            visibility: hidden !important;
         }
 
         .block-container {
@@ -192,6 +204,30 @@ def get_local_csv_files():
     return sorted(os.path.relpath(f, ROOT_DIR) for f in files)
 
 
+@st.cache_data(ttl=60)
+def get_local_mask_files():
+    files = []
+    for folder_name in ["masks3d", os.path.join("models", "masks3d")]:
+        folder = ROOT_DIR / folder_name
+        if not folder.exists():
+            continue
+        files.extend(glob.glob(str(folder / "**" / "*.npy"), recursive=True))
+        files.extend(glob.glob(str(folder / "**" / "*.tif"), recursive=True))
+        files.extend(glob.glob(str(folder / "**" / "*.tiff"), recursive=True))
+    files = [f for f in files if "/." not in f and "\\." not in f]
+    return sorted(os.path.relpath(f, ROOT_DIR) for f in files)
+
+
+@st.cache_data(ttl=60)
+def get_mask_tiff_files():
+    files = []
+    for tif_rel in get_local_tif_files():
+        tif_lower = tif_rel.lower()
+        if "mask" in tif_lower or "masks" in tif_lower:
+            files.append(tif_rel)
+    return sorted(files)
+
+
 @st.cache_resource
 def load_image(file_source):
     if isinstance(file_source, str):
@@ -223,8 +259,6 @@ def normalize_for_display(img):
 
 @st.cache_data(ttl=60)
 def load_tracking_csv(csv_path: str):
-    import pandas as pd
-
     data = pd.read_csv(csv_path)
     required_columns = {"frame", "filament_id", "z", "y", "x"}
     missing_columns = required_columns.difference(data.columns)
@@ -237,6 +271,11 @@ def load_tracking_csv(csv_path: str):
     data["frame"] = data["frame"].astype(int)
     data["filament_id"] = data["filament_id"].astype(int)
     return data
+
+
+@st.cache_data(ttl=60)
+def load_generic_csv(csv_path: str):
+    return pd.read_csv(csv_path)
 
 
 @st.cache_data(ttl=60)
@@ -342,11 +381,166 @@ def build_xy_overlay(
 
 
 def open_crop_in_results_viewer(crop_path: str, csv_path: str | None = None, roi_index: int | None = None) -> None:
-    st.session_state["active_page"] = "Crop Results Viewer"
+    st.session_state["active_page"] = "Filament Analysis"
     st.session_state["results_selected_tif"] = crop_path
     st.session_state["results_selected_csv"] = csv_path
     if roi_index is not None:
         st.session_state["results_selected_roi_index"] = roi_index
+
+
+def infer_matching_mask_files(tif_path: str):
+    base_name = Path(tif_path).stem
+    masks = []
+    for folder_name in ["masks3d", os.path.join("models", "masks3d")]:
+        folder = ROOT_DIR / folder_name
+        if not folder.exists():
+            continue
+        masks.extend(folder.glob(f"{base_name}*.npy"))
+        masks.extend(folder.glob(f"{base_name}*.tif"))
+        masks.extend(folder.glob(f"{base_name}*.tiff"))
+    return sorted(str(path.resolve()) for path in masks)
+
+
+def infer_matching_mask_tiffs(tif_path: str):
+    base_name = Path(tif_path).stem.lower()
+    matches = []
+    for tif_rel in get_mask_tiff_files():
+        tif_name = Path(tif_rel).stem.lower()
+        if base_name in tif_name or tif_name in base_name:
+            matches.append(str((ROOT_DIR / tif_rel).resolve()))
+    return sorted(matches)
+
+
+def infer_matching_mask_series(tif_path: str):
+    base_name = Path(tif_path).stem
+    mask_files = infer_matching_mask_files(tif_path)
+    npy_files = [path for path in mask_files if path.lower().endswith(".npy")]
+    return sorted(npy_files)
+
+
+def infer_mask_series_base(tif_path: str) -> str | None:
+    base_name = Path(tif_path).stem
+    for folder_name in ["masks3d", os.path.join("models", "masks3d")]:
+        folder = ROOT_DIR / folder_name
+        if not folder.exists():
+            continue
+        pattern = sorted(folder.glob(f"{base_name}_t*.npy"))
+        if pattern:
+            return str((folder / base_name).resolve())
+    return None
+
+
+def render_filament_stats(dataframe):
+    if dataframe is None:
+        st.info("No CSV selected.")
+        return
+
+    st.write("### Filament Statistics")
+    filament_count = int(dataframe["filament_id"].nunique()) if "filament_id" in dataframe.columns else None
+    total_detections = len(dataframe)
+    average_length_um = None
+    if "size_px" in dataframe.columns:
+        average_length_um = float(dataframe["size_px"].mean()) * 0.3
+
+    average_duration_min = None
+    if {"filament_id", "frame"}.issubset(dataframe.columns):
+        duration_df = (
+            dataframe.groupby("filament_id")["frame"]
+            .agg(["min", "max"])
+            .reset_index()
+        )
+        duration_df["duration_min"] = (duration_df["max"] - duration_df["min"]) * 15.0
+        average_duration_min = float(duration_df["duration_min"].mean()) if not duration_df.empty else 0.0
+
+    metric_cols = st.columns(4)
+    with metric_cols[0]:
+        st.metric("Detections", total_detections)
+    with metric_cols[1]:
+        st.metric("Unique Filaments", filament_count if filament_count is not None else "N/A")
+    with metric_cols[2]:
+        st.metric(
+            "Average Length (um)",
+            f"{average_length_um:.2f}" if average_length_um is not None else "N/A",
+        )
+    with metric_cols[3]:
+        st.metric(
+            "Average Duration (min)",
+            f"{average_duration_min:.1f}" if average_duration_min is not None else "N/A",
+        )
+
+    numeric_df = dataframe.select_dtypes(include=[np.number])
+    if not numeric_df.empty:
+        st.write("### Numeric Summary")
+        st.dataframe(numeric_df.describe().transpose(), width="stretch")
+
+    st.write("### CSV Preview")
+    st.dataframe(dataframe.head(100), width="stretch", hide_index=True)
+
+
+def launch_napari(
+    image_path: str,
+    mask_tiff_path: str | None,
+    mask_series_base: str | None,
+    channel_idx: int,
+) -> tuple[bool, str]:
+    script_path = ROOT_DIR / "scripts" / "open_in_napari.py"
+    if not script_path.exists():
+        return False, f"Napari launcher script not found: {script_path}"
+
+    launch_cmd = [sys.executable, str(script_path), "--image", image_path, "--channel", str(channel_idx)]
+    if mask_tiff_path:
+        launch_cmd.extend(["--mask-tiff", mask_tiff_path])
+    if mask_series_base:
+        launch_cmd.extend(["--mask-series-base", mask_series_base])
+
+    try:
+        subprocess.Popen(launch_cmd, cwd=str(ROOT_DIR))
+        return True, "Opened napari in a separate process."
+    except Exception as exc:
+        return False, f"Failed to start napari: {exc}"
+
+
+def render_projection_plot(title: str, image_rgb: np.ndarray, x_coords, y_coords, tracking_rows, point_radius: int):
+    try:
+        import plotly.graph_objects as go
+    except Exception as exc:
+        st.error(f"Plotly is required for orthogonal views: {exc}")
+        return
+
+    fig = go.Figure()
+    fig.add_trace(go.Image(z=image_rgb))
+
+    if tracking_rows is not None and not tracking_rows.empty:
+        hover_text = [
+            f"Filament {int(row.filament_id)}<br>Frame {int(row.frame)}<br>Z {float(row.z):.2f}<br>Y {float(row.y):.2f}<br>X {float(row.x):.2f}"
+            for row in tracking_rows.itertuples(index=False)
+        ]
+        point_colors = [f"rgb{filament_color(int(fid))}" for fid in tracking_rows["filament_id"]]
+        fig.add_trace(
+            go.Scatter(
+                x=x_coords,
+                y=y_coords,
+                mode="markers",
+                marker={
+                    "size": max(point_radius * 2, 8),
+                    "color": point_colors,
+                    "line": {"color": "white", "width": 1},
+                },
+                text=hover_text,
+                hovertemplate="%{text}<extra></extra>",
+                name="Tracked filaments",
+            )
+        )
+
+    fig.update_layout(
+        title=title,
+        height=360,
+        margin={"l": 0, "r": 0, "t": 36, "b": 0},
+        xaxis={"visible": False},
+        yaxis={"visible": False, "autorange": "reversed", "scaleanchor": "x"},
+        showlegend=False,
+    )
+    st.plotly_chart(fig, width="stretch")
 
 
 def render_orthogonal_views(volume_zyx, tracking_rows, point_radius, show_labels, saved_mask, saved_mask_alpha):
@@ -363,32 +557,34 @@ def render_orthogonal_views(volume_zyx, tracking_rows, point_radius, show_labels
         xz_rgb = blend_mask_on_rgb(xz_rgb, np.max(saved_mask, axis=1), saved_mask_alpha)
         yz_rgb = blend_mask_on_rgb(yz_rgb, np.max(saved_mask, axis=2), saved_mask_alpha)
 
-    if tracking_rows is not None and not tracking_rows.empty:
-        for row in tracking_rows.itertuples(index=False):
-            color = filament_color(int(row.filament_id))
-            xy_center = (int(round(row.x)), int(round(row.y)))
-            xz_center = (int(round(row.x)), int(round(row.z)))
-            yz_center = (int(round(row.y)), int(round(row.z)))
-
-            cv2.circle(xy_rgb, xy_center, point_radius, color, thickness=-1)
-            cv2.circle(xz_rgb, xz_center, point_radius, color, thickness=-1)
-            cv2.circle(yz_rgb, yz_center, point_radius, color, thickness=-1)
-
-            if show_labels:
-                cv2.putText(xy_rgb, str(int(row.filament_id)), (xy_center[0] + 4, xy_center[1] - 4), cv2.FONT_HERSHEY_SIMPLEX, 0.4, color, 1, cv2.LINE_AA)
-                cv2.putText(xz_rgb, str(int(row.filament_id)), (xz_center[0] + 4, xz_center[1] - 4), cv2.FONT_HERSHEY_SIMPLEX, 0.4, color, 1, cv2.LINE_AA)
-                cv2.putText(yz_rgb, str(int(row.filament_id)), (yz_center[0] + 4, yz_center[1] - 4), cv2.FONT_HERSHEY_SIMPLEX, 0.4, color, 1, cv2.LINE_AA)
-
     col1, col2, col3 = st.columns(3)
     with col1:
-        st.write("**XY projection**")
-        st.image(xy_rgb, use_container_width=True)
+        render_projection_plot(
+            "XY projection",
+            xy_rgb,
+            tracking_rows["x"] if tracking_rows is not None else [],
+            tracking_rows["y"] if tracking_rows is not None else [],
+            tracking_rows,
+            point_radius,
+        )
     with col2:
-        st.write("**XZ projection**")
-        st.image(xz_rgb, use_container_width=True)
+        render_projection_plot(
+            "XZ projection",
+            xz_rgb,
+            tracking_rows["x"] if tracking_rows is not None else [],
+            tracking_rows["z"] if tracking_rows is not None else [],
+            tracking_rows,
+            point_radius,
+        )
     with col3:
-        st.write("**YZ projection**")
-        st.image(yz_rgb, use_container_width=True)
+        render_projection_plot(
+            "YZ projection",
+            yz_rgb,
+            tracking_rows["y"] if tracking_rows is not None else [],
+            tracking_rows["z"] if tracking_rows is not None else [],
+            tracking_rows,
+            point_radius,
+        )
 
 
 def render_two_point_five_d_view(volume_zyx, z_idx, tracking_rows, point_radius, show_labels, saved_mask, saved_mask_alpha):
@@ -411,7 +607,7 @@ def render_two_point_five_d_view(volume_zyx, z_idx, tracking_rows, point_radius,
     composite = draw_tracking_points_xy(composite, active_rows, point_radius, show_labels)
 
     st.write("**2.5D RGB slab**")
-    st.image(composite, use_container_width=True)
+    st.image(composite, width="stretch")
     st.caption(f"Red = Z {z_prev}, Green = Z {z_idx}, Blue = Z {z_next}")
 
 
@@ -422,27 +618,37 @@ def render_3d_volume_view(volume_zyx, tracking_rows, saved_mask):
         st.error(f"Plotly is required for 3D volume rendering: {exc}")
         return
 
-    z_dim, y_dim, x_dim = volume_zyx.shape
-    max_dim = max(z_dim, y_dim, x_dim)
-    step = max(1, max_dim // 32)
-    vol_small = volume_zyx[::step, ::step, ::step].astype(np.float32)
-    z_coords, y_coords, x_coords = np.mgrid[
-        0:vol_small.shape[0],
-        0:vol_small.shape[1],
-        0:vol_small.shape[2],
-    ]
+    volume = volume_zyx.astype(np.float32)
+    if volume.max() > volume.min():
+        volume = (volume - volume.min()) / (volume.max() - volume.min())
+    else:
+        volume = np.zeros_like(volume, dtype=np.float32)
+
+    threshold = float(np.quantile(volume, 0.985))
+    signal_points = np.argwhere(volume >= threshold)
+    if len(signal_points) == 0:
+        threshold = float(np.quantile(volume, 0.95))
+        signal_points = np.argwhere(volume >= threshold)
+    signal_step = max(1, len(signal_points) // 12000)
+    signal_points = signal_points[::signal_step]
+    signal_values = volume[signal_points[:, 0], signal_points[:, 1], signal_points[:, 2]]
 
     fig = go.Figure()
     fig.add_trace(
-        go.Volume(
-            x=x_coords.flatten(),
-            y=y_coords.flatten(),
-            z=z_coords.flatten(),
-            value=vol_small.flatten(),
-            opacity=0.08,
-            surface_count=12,
-            colorscale="Viridis",
-            showscale=False,
+        go.Scatter3d(
+            x=signal_points[:, 2],
+            y=signal_points[:, 1],
+            z=signal_points[:, 0],
+            mode="markers",
+            marker={
+                "size": 2.5,
+                "color": signal_values,
+                "colorscale": "Gray",
+                "opacity": 0.16,
+                "showscale": False,
+            },
+            hoverinfo="skip",
+            name="Fluorescence signal",
         )
     )
 
@@ -453,10 +659,13 @@ def render_3d_volume_view(volume_zyx, tracking_rows, saved_mask):
                 x=tracking_rows["x"],
                 y=tracking_rows["y"],
                 z=tracking_rows["z"],
-                mode="markers+text",
-                text=tracking_rows["filament_id"].astype(str),
-                textposition="top center",
-                marker={"size": 4, "color": point_colors},
+                mode="markers",
+                marker={"size": 5, "color": point_colors, "line": {"color": "white", "width": 1}},
+                text=[
+                    f"Filament {int(row.filament_id)}<br>Frame {int(row.frame)}<br>Z {float(row.z):.2f}<br>Y {float(row.y):.2f}<br>X {float(row.x):.2f}"
+                    for row in tracking_rows.itertuples(index=False)
+                ],
+                hovertemplate="%{text}<extra></extra>",
                 name="Tracked filaments",
             )
         )
@@ -471,7 +680,8 @@ def render_3d_volume_view(volume_zyx, tracking_rows, saved_mask):
                 y=mask_points[:, 1],
                 z=mask_points[:, 0],
                 mode="markers",
-                marker={"size": 2, "color": "rgba(0,255,120,0.35)"},
+                marker={"size": 1.8, "color": "rgba(0,255,120,0.18)"},
+                hoverinfo="skip",
                 name="Painter mask",
             )
         )
@@ -484,9 +694,11 @@ def render_3d_volume_view(volume_zyx, tracking_rows, saved_mask):
             "yaxis_title": "Y",
             "zaxis_title": "Z",
             "aspectmode": "data",
+            "bgcolor": "rgba(0,0,0,0)",
         },
+        legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "x": 0},
     )
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 
 
 def is_port_open(host: str, port: int) -> bool:
@@ -632,7 +844,7 @@ def render_preview_and_analysis_tab():
                 indices.append(0)
 
         preview_img = data if ndim <= display_dims else data[tuple(indices)]
-        st.image(normalize_for_display(preview_img), use_container_width=True, clamp=True)
+        st.image(normalize_for_display(preview_img), width="stretch", clamp=True)
         st.markdown("</div>", unsafe_allow_html=True)
     else:
         st.markdown('<div class="app-card">', unsafe_allow_html=True)
@@ -864,7 +1076,7 @@ def render_tracking_view(process_path, data):
     frames_count = stack_2d_timeseries.shape[0]
     st.info(f"Currently Selected for Analysis: ROI {st.session_state.selected_roi_index + 1}")
     results_csv_path = infer_matching_csv(selected_crop_path)
-    if st.button("Open Selected ROI in Crop Results Viewer", type="primary"):
+    if st.button("Open Selected ROI in Filament Analysis", type="primary"):
         open_crop_in_results_viewer(
             crop_path=str(Path(selected_crop_path).resolve()),
             csv_path=results_csv_path,
@@ -957,24 +1169,24 @@ def render_tracking_view(process_path, data):
                     for r in rows
                 ]
             ),
-            use_container_width=True,
+            width="stretch",
         )
 
     prev1, prev2, prev3, prev4 = st.columns(4)
     with prev1:
         st.write("**Original**")
-        st.image(preview_frame, clamp=True, use_container_width=True)
+        st.image(preview_frame, clamp=True, width="stretch")
     with prev2:
         st.write("**Preprocessed**")
-        st.image(pre, clamp=True, use_container_width=True)
+        st.image(pre, clamp=True, width="stretch")
     with prev3:
         st.write("**Ridge Enhance**")
-        st.image(ridge, clamp=True, use_container_width=True)
+        st.image(ridge, clamp=True, width="stretch")
     with prev4:
         st.write("**Overlay**")
         rgb = np.stack([pre, pre, pre], axis=-1)
         rgb[skeleton > 0] = [1.0, 0.0, 0.0]
-        st.image(rgb, clamp=True, use_container_width=True)
+        st.image(rgb, clamp=True, width="stretch")
 
     if st.button("Run Full Tracking Analysis on Crop", type="primary"):
         with st.spinner("Processing hyperstack crop through Ridge Enhancement pipeline..."):
@@ -1009,9 +1221,9 @@ def render_tracking_view(process_path, data):
                     transient_clusters = cluster_df[cluster_df["Duration (Frames)"] <= 2]
 
                     st.write("#### Stable Frame Clusters (> 2 frames)")
-                    st.dataframe(stable_clusters, use_container_width=True)
+                    st.dataframe(stable_clusters, width="stretch")
                     st.write("#### Transient Frame Clusters (1-2 frames)")
-                    st.dataframe(transient_clusters, use_container_width=True)
+                    st.dataframe(transient_clusters, width="stretch")
             except Exception as exc:
                 st.error(f"Error during tracking: {exc}")
 
@@ -1054,11 +1266,11 @@ def render_results_tab():
     st.markdown(
         """
         <div class="app-hero">
-            <div class="eyebrow">Results</div>
-            <h1 class="hero-title">Crop + Tracking Results Viewer</h1>
+            <div class="eyebrow">Analysis</div>
+            <h1 class="hero-title">Filament Analysis</h1>
             <p class="hero-copy">
-                Inspect a cropped hyperstack alongside its tracking CSV. The fluorescence slice is shown with the
-                CSV-derived filament overlay, and any saved painter mask for the same frame is blended in when present.
+                Review the filament CSV as an analysis table, inspect summary statistics, and open the selected crop
+                with an optional mask in napari for proper local 3D exploration.
             </p>
         </div>
         """,
@@ -1098,9 +1310,9 @@ def render_results_tab():
 
     try:
         crop_data, crop_axes, _ = load_image(selected_tif_path)
-        tracking_df = load_tracking_csv(selected_csv_path) if selected_csv_path else None
+        stats_df = load_generic_csv(selected_csv_path) if selected_csv_path else None
     except Exception as exc:
-        st.error(f"Could not load results inputs: {exc}")
+        st.error(f"Could not load analysis inputs: {exc}")
         st.markdown("</div>", unsafe_allow_html=True)
         return
 
@@ -1109,78 +1321,78 @@ def render_results_tab():
         st.markdown("</div>", unsafe_allow_html=True)
         return
 
-    t_dim, z_dim, c_dim, _, _ = crop_data.shape
+    t_dim, _, c_dim, _, _ = crop_data.shape
     default_channel = 1 if c_dim > 1 else 0
-    tracked_frame_min = int(tracking_df["frame"].min()) if tracking_df is not None and not tracking_df.empty else 0
-    initial_frame = min(max(tracked_frame_min, 0), t_dim - 1)
 
-    controls1, controls2, controls3, controls4 = st.columns(4)
+    matching_mask_tiffs = infer_matching_mask_tiffs(selected_tif_path)
+    mask_tiff_files = get_mask_tiff_files()
+    mask_tiff_options = ["None"] + mask_tiff_files
+    default_mask_tiff_value = "None"
+    if matching_mask_tiffs:
+        first_match_rel = os.path.relpath(matching_mask_tiffs[0], ROOT_DIR)
+        if first_match_rel in mask_tiff_files:
+            default_mask_tiff_value = first_match_rel
+
+    matching_mask_series = infer_matching_mask_series(selected_tif_path)
+    mask_series_options = ["None"]
+    default_mask_series_value = "None"
+    if matching_mask_series:
+        mask_series_options.append("Auto-detected NPY movie")
+        default_mask_series_value = "Auto-detected NPY movie"
+
+    controls1, controls2, controls3 = st.columns(3)
     with controls1:
-        frame_idx = st.slider("Frame", 0, t_dim - 1, initial_frame)
+        channel_idx = st.selectbox("Napari channel", list(range(c_dim)), index=default_channel)
     with controls2:
-        channel_idx = st.selectbox("Channel", list(range(c_dim)), index=default_channel)
+        selected_mask_tiff_rel = st.selectbox(
+            "Mask TIFF",
+            mask_tiff_options,
+            index=mask_tiff_options.index(default_mask_tiff_value),
+        )
     with controls3:
-        display_mode = st.selectbox("Display mode", ["3D Volume", "Orthogonal Views", "2.5D View"])
-    with controls4:
-        point_radius = st.slider("Overlay radius", 1, 12, 4)
+        selected_mask_series_label = st.selectbox(
+            "Mask NPY series",
+            mask_series_options,
+            index=mask_series_options.index(default_mask_series_value),
+        )
 
-    z_idx = st.slider("Central Z plane", 0, z_dim - 1, z_dim // 2)
+    selected_mask_tiff_path = (
+        None if selected_mask_tiff_rel == "None" else str((ROOT_DIR / selected_mask_tiff_rel).resolve())
+    )
+    selected_mask_series_base = None
+    if selected_mask_series_label != "None" and matching_mask_series:
+        selected_mask_series_base = infer_mask_series_base(selected_tif_path)
 
-    display_options = st.columns(3)
-    with display_options[0]:
-        show_labels = st.checkbox("Show filament labels", value=True)
-    with display_options[1]:
-        show_saved_mask = st.checkbox("Blend saved painter mask", value=True)
-    with display_options[2]:
-        saved_mask_alpha = st.slider("Painter mask alpha", 0.0, 1.0, 0.35, 0.05)
+    st.caption(
+        f"Crop shape `{crop_data.shape}` with axes `{crop_axes}`. "
+        f"Napari opens the full movie for the selected channel as a `TZYX` volume."
+    )
 
-    volume_zyx = crop_data[frame_idx, :, channel_idx, :, :]
-    saved_mask = None
-    saved_mask_path = find_saved_mask_path(selected_tif_path, frame_idx)
-    if show_saved_mask and saved_mask_path:
-        try:
-            saved_mask = load_mask_volume(saved_mask_path)
-        except Exception as exc:
-            st.warning(f"Saved mask could not be loaded: {exc}")
+    if matching_mask_tiffs:
+        st.caption(f"Matching mask TIFFs found: {len(matching_mask_tiffs)}")
+    if matching_mask_series:
+        st.caption(f"Matching per-frame NPY masks found: {len(matching_mask_series)}")
 
-    frame_rows = get_tracking_rows_for_frame(tracking_df, frame_idx)
-
-    info_col, stats_col = st.columns([3, 2])
-    with info_col:
-        tracking_summary = "No CSV loaded."
-        if tracking_df is not None and not tracking_df.empty:
-            tracking_summary = (
-                f"CSV rows: {len(tracking_df)}. "
-                f"Frame span: {int(tracking_df['frame'].min())} to {int(tracking_df['frame'].max())}."
-            )
-        st.caption(f"Crop shape `{crop_data.shape}` with axes `{crop_axes}`. {tracking_summary}")
-    with stats_col:
-        st.metric("Filaments in frame", int(frame_rows["filament_id"].nunique()) if frame_rows is not None and not frame_rows.empty else 0)
-
-    if display_mode == "3D Volume":
-        render_3d_volume_view(volume_zyx, frame_rows, saved_mask)
-    elif display_mode == "Orthogonal Views":
-        render_orthogonal_views(volume_zyx, frame_rows, point_radius, show_labels, saved_mask, saved_mask_alpha)
-    else:
-        render_two_point_five_d_view(volume_zyx, z_idx, frame_rows, point_radius, show_labels, saved_mask, saved_mask_alpha)
-
-    if tracking_df is not None:
-        if frame_rows is None or frame_rows.empty:
-            st.info("No CSV rows match the currently selected frame.")
+    if st.button("View in napari", type="primary"):
+        ok, message = launch_napari(
+            selected_tif_path,
+            selected_mask_tiff_path,
+            selected_mask_series_base,
+            channel_idx,
+        )
+        if ok:
+            st.success(message)
         else:
-            st.dataframe(frame_rows, use_container_width=True, hide_index=True)
+            st.error(message)
 
-    if saved_mask_path:
-        st.caption(f"Saved painter mask loaded from `{os.path.relpath(saved_mask_path, ROOT_DIR)}`.")
-    elif show_saved_mask:
-        st.caption("No saved painter mask exists for the current frame.")
+    render_filament_stats(stats_df)
 
     st.markdown("</div>", unsafe_allow_html=True)
 
 
 def main():
     apply_app_styles()
-    pages = ["TIFF Viewer + Analysis", "Filament Painter", "Crop Results Viewer"]
+    pages = ["TIFF Viewer + Analysis", "Filament Painter", "Filament Analysis"]
     current_page = st.session_state.get("active_page", pages[0])
     if current_page not in pages:
         current_page = pages[0]
