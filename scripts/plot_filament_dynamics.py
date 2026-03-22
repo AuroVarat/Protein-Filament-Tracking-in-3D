@@ -2,11 +2,12 @@
 """
 Create figure summaries based on the filament dynamics tables.
 
-Produces four plots:
+Produces five plots:
   1. Histogram of per-filament maximum robust length with the user-specified lower tail highlighted.
   2. Scatter of maximum robust length versus z-plane count to visualize dot-like tracks.
   3. Arc-length bar plot with 95% CI (from the length-estimate table) per video.
   4. Histogram of XY slice lengths above a configurable cutoff.
+  5. Rod-fit quality scatter showing line-fit R2 versus rod-fit RMSE.
 
 Produces PNG files in the specified output directory (default `output/`).
 """
@@ -17,6 +18,7 @@ import argparse
 import os
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 mpl_config_dir = Path("output") / ".mplconfig"
@@ -73,13 +75,33 @@ def ensure_output_dir(path: Path) -> None:
 
 
 def plot_size_histogram(summary: pd.DataFrame, quantile: float, path: Path) -> None:
+    lengths = summary["max_length_um"].dropna().to_numpy(dtype=float)
+    if lengths.size == 0:
+        return
+
     threshold = float(summary["max_length_um"].quantile(float(quantile)))
+    mu = float(lengths.mean())
+    sigma = float(lengths.std(ddof=0))
     fig, ax = plt.subplots(figsize=(6, 4))
-    ax.hist(summary["max_length_um"], bins=30, color="#5B8FF9", edgecolor="black")
+    counts, bins, _ = ax.hist(lengths, bins=30, color="#5B8FF9", edgecolor="black", alpha=0.75)
+    if sigma > 0 and bins.size > 1:
+        x = np.linspace(float(bins[0]), float(bins[-1]), 400)
+        bin_width = float(bins[1] - bins[0])
+        pdf = (1.0 / (sigma * np.sqrt(2.0 * np.pi))) * np.exp(-0.5 * ((x - mu) / sigma) ** 2)
+        ax.plot(x, pdf * lengths.size * bin_width, color="#262626", linewidth=2.0, label="Gaussian fit")
     ax.axvline(threshold, color="#F46C93", linestyle="--", label=f"{quantile*100:.0f}th %ile")
     ax.set_xlabel("Largest filament length in video (um)")
     ax.set_ylabel("Count")
     ax.set_title("Per-filament maximum length distribution")
+    ax.text(
+        0.98,
+        0.95,
+        f"mu = {mu:.2f} um\nsigma = {sigma:.2f} um",
+        transform=ax.transAxes,
+        ha="right",
+        va="top",
+        bbox={"boxstyle": "round", "facecolor": "white", "alpha": 0.85, "edgecolor": "#999999"},
+    )
     ax.legend()
     fig.tight_layout()
     fig.savefig(path)
@@ -150,6 +172,32 @@ def plot_xy_slice_histogram(xy_slice_df: pd.DataFrame, min_length_um: float, pat
     plt.close(fig)
 
 
+def plot_rod_fit_quality(summary: pd.DataFrame, path: Path) -> None:
+    required = {"mean_linearity_r2", "mean_rod_fit_rmse_um", "max_length_um", "rotation_angle_deg"}
+    if summary.empty or not required.issubset(summary.columns):
+        return
+
+    fig, ax = plt.subplots(figsize=(6.5, 4.5))
+    scatter = ax.scatter(
+        summary["mean_linearity_r2"],
+        summary["mean_rod_fit_rmse_um"],
+        c=summary["rotation_angle_deg"],
+        s=20 + 10 * summary["max_length_um"].clip(lower=0.0),
+        cmap="plasma",
+        edgecolor="black",
+        linewidth=0.4,
+        alpha=0.85,
+    )
+    ax.set_xlabel("Mean line-fit R2")
+    ax.set_ylabel("Mean rod-fit RMSE (um)")
+    ax.set_title("Rod-fit quality per filament")
+    cbar = fig.colorbar(scatter, ax=ax)
+    cbar.set_label("Rotation angle (deg)")
+    fig.tight_layout()
+    fig.savefig(path)
+    plt.close(fig)
+
+
 def run_plot(
     summary_csv: Path,
     processed_csv: Path | None,
@@ -170,11 +218,13 @@ def run_plot(
     scatter_path = output_dir / "mean_length_vs_z_planes.png"
     bars_path = output_dir / "arc_length_ci.png"
     xy_hist_path = output_dir / "xy_slice_length_hist.png"
+    rod_fit_path = output_dir / "rod_fit_quality.png"
     plot_df = filtered if filtered is not None and not filtered.empty else summary
     plot_size_histogram(plot_df, size_tail_quantile, hist_path)
     plot_z_plane_vs_size(plot_df, scatter_path)
     plot_length_errorbars(length_df, bars_path)
     plot_xy_slice_histogram(xy_slice_df, xy_hist_min_length_um, xy_hist_path)
+    plot_rod_fit_quality(plot_df, rod_fit_path)
     print(f"Plots saved to {output_dir}")
 
 

@@ -110,6 +110,18 @@ def parse_args() -> argparse.Namespace:
         help="Minimum XY slice length kept for the XY histogram.",
     )
     parser.add_argument(
+        "--small-xy-threshold-um",
+        type=float,
+        default=0.9,
+        help="Tracks at or below this maximum XY slice length are treated as small in XY.",
+    )
+    parser.add_argument(
+        "--min-consecutive-frames-small-xy",
+        type=int,
+        default=5,
+        help="Minimum longest consecutive accepted-frame run for tracks that are small in XY.",
+    )
+    parser.add_argument(
         "--plot-output-dir",
         default="output",
         help="Directory where plot PNGs will be stored.",
@@ -123,6 +135,79 @@ def ensure_parent(path: Path) -> None:
 
 def collect_mask_files(mask_dir: Path) -> Iterable[Path]:
     yield from sorted(mask_dir.glob("*_mask.tif"))
+
+
+def dominant_plane_from_axis(axis_xyz: np.ndarray) -> str:
+    axis_abs = np.abs(axis_xyz)
+    plane_names = np.array(["yz", "xz", "xy"], dtype=object)
+    return str(plane_names[int(np.argmin(axis_abs))])
+
+
+def plane_angles_deg(axis_xyz: np.ndarray) -> tuple[float, float, float]:
+    axis_abs = np.clip(np.abs(axis_xyz), 0.0, 1.0)
+    return tuple(float(np.degrees(np.arcsin(axis_abs[idx]))) for idx in [2, 1, 0])
+
+
+def compute_line_fit_metrics(coords_um: np.ndarray) -> dict[str, float | str]:
+    dims = coords_um.shape[1] if coords_um.ndim == 2 else 0
+    if coords_um.shape[0] < 2 or dims == 0:
+        axis = np.zeros(max(dims, 1), dtype=np.float64)
+        axis[0] = 1.0
+        return {
+            "principal_axis_x": float(axis[0]),
+            "principal_axis_y": float(axis[1]) if dims > 1 else 0.0,
+            "principal_axis_z": float(axis[2]) if dims > 2 else 0.0,
+            "linearity_r2": 0.0,
+            "rod_fit_rmse_um": 0.0,
+            "rod_fit_cv": 0.0,
+            "angle_to_xy_deg": 0.0,
+            "angle_to_xz_deg": 0.0,
+            "angle_to_yz_deg": 90.0 if dims == 1 else 0.0,
+            "dominant_plane": "xy" if dims > 2 else "xy",
+        }
+
+    centered = coords_um - coords_um.mean(axis=0, keepdims=True)
+    cov = np.atleast_2d(np.cov(centered, rowvar=False))
+    evals, evecs = np.linalg.eigh(cov)
+    evals = np.clip(np.asarray(evals, dtype=np.float64), a_min=0.0, a_max=None)
+    principal_axis = np.asarray(evecs[:, int(np.argmax(evals))], dtype=np.float64)
+    axis_norm = np.linalg.norm(principal_axis)
+    if axis_norm == 0.0:
+        principal_axis = np.zeros(dims, dtype=np.float64)
+        principal_axis[0] = 1.0
+    else:
+        principal_axis = principal_axis / axis_norm
+
+    projections = centered @ principal_axis
+    reconstructed = np.outer(projections, principal_axis)
+    residuals = centered - reconstructed
+    residual_distances = np.linalg.norm(residuals, axis=1)
+
+    total_variance = float(evals.sum())
+    linearity_r2 = float(evals.max() / total_variance) if total_variance > 0 else 0.0
+    rod_fit_rmse_um = float(np.sqrt(np.mean(residual_distances**2))) if residual_distances.size else 0.0
+
+    p5, p95 = np.percentile(projections, [5, 95])
+    trimmed_span = max(float(p95 - p5), 0.0)
+    robust_length_um = trimmed_span / 0.9 if trimmed_span > 0 else 0.0
+    rod_fit_cv = float(rod_fit_rmse_um / robust_length_um) if robust_length_um > 0 else 0.0
+
+    axis_xyz = np.zeros(3, dtype=np.float64)
+    axis_xyz[: min(3, dims)] = principal_axis[: min(3, dims)]
+    angle_to_xy_deg, angle_to_xz_deg, angle_to_yz_deg = plane_angles_deg(axis_xyz)
+
+    return {
+        "principal_axis_x": float(axis_xyz[0]),
+        "principal_axis_y": float(axis_xyz[1]),
+        "principal_axis_z": float(axis_xyz[2]),
+        "linearity_r2": linearity_r2,
+        "rod_fit_rmse_um": rod_fit_rmse_um,
+        "rod_fit_cv": rod_fit_cv,
+        "angle_to_xy_deg": angle_to_xy_deg,
+        "angle_to_xz_deg": angle_to_xz_deg,
+        "angle_to_yz_deg": angle_to_yz_deg,
+        "dominant_plane": dominant_plane_from_axis(axis_xyz),
+    }
 
 
 def compute_length_metrics(coords_um: np.ndarray) -> tuple[float, float, float]:
@@ -240,6 +325,7 @@ def load_frame_measurements(
                 robust_length_um, span_length_um, arc_length_um = compute_length_metrics(
                     coords_xyz_um
                 )
+                line_fit = compute_line_fit_metrics(coords_xyz_um)
                 intensities = frame_raw[frame_mask == filament_id]
 
                 slice_lengths_um: list[float] = []
@@ -288,6 +374,16 @@ def load_frame_measurements(
                         "span_length_um": float(span_length_um),
                         "arc_length_um": float(arc_length_um),
                         "max_xy_slice_length_um": float(max(slice_lengths_um, default=0.0)),
+                        "principal_axis_x": float(line_fit["principal_axis_x"]),
+                        "principal_axis_y": float(line_fit["principal_axis_y"]),
+                        "principal_axis_z": float(line_fit["principal_axis_z"]),
+                        "linearity_r2": float(line_fit["linearity_r2"]),
+                        "rod_fit_rmse_um": float(line_fit["rod_fit_rmse_um"]),
+                        "rod_fit_cv": float(line_fit["rod_fit_cv"]),
+                        "angle_to_xy_deg": float(line_fit["angle_to_xy_deg"]),
+                        "angle_to_xz_deg": float(line_fit["angle_to_xz_deg"]),
+                        "angle_to_yz_deg": float(line_fit["angle_to_yz_deg"]),
+                        "dominant_plane": str(line_fit["dominant_plane"]),
                         "mean_intensity": float(intensities.mean()),
                         "sum_intensity": float(intensities.sum()),
                         "max_intensity": float(intensities.max()),
@@ -309,9 +405,11 @@ def filter_frame_measurements(
         return frame_df, 0.0
 
     size_tail_quantile = float(np.clip(size_tail_quantile, 0.0, 1.0))
-    size_threshold = float(frame_df["robust_length_um"].quantile(size_tail_quantile))
+    size_threshold = float(
+        frame_df["robust_length_um"].quantile(size_tail_quantile, interpolation="lower")
+    )
     keep = ~(
-        (frame_df["robust_length_um"] <= size_threshold)
+        (frame_df["robust_length_um"] < size_threshold)
         & (frame_df["z_plane_count"] < min_z_planes)
     )
     return frame_df.loc[keep].copy(), size_threshold
@@ -322,6 +420,8 @@ def summarize_tracks(
     frame_interval_min: float,
     min_observations: int,
     min_consecutive_frames: int,
+    small_xy_threshold_um: float,
+    min_consecutive_frames_small_xy: int,
 ) -> pd.DataFrame:
     if frame_df.empty:
         return pd.DataFrame()
@@ -345,6 +445,13 @@ def summarize_tracks(
                     current_run = 1
             max_consecutive_frames = max(max_consecutive_frames, current_run)
         if max_consecutive_frames < min_consecutive_frames:
+            continue
+
+        track_max_xy_slice_length_um = float(group["max_xy_slice_length_um"].max())
+        if (
+            track_max_xy_slice_length_um <= small_xy_threshold_um
+            and max_consecutive_frames < min_consecutive_frames_small_xy
+        ):
             continue
 
         centroids = group[["centroid_x_um", "centroid_y_um", "centroid_z_um"]].to_numpy()
@@ -372,6 +479,34 @@ def summarize_tracks(
         length_change_rate = (
             float((length_seq[-1] - length_seq[0]) / lifetime_min) if lifetime_min > 0 else 0.0
         )
+        axes = group[["principal_axis_x", "principal_axis_y", "principal_axis_z"]].to_numpy(dtype=np.float64)
+        aligned_axes = axes.copy()
+        for idx in range(1, len(aligned_axes)):
+            if float(np.dot(aligned_axes[idx - 1], aligned_axes[idx])) < 0:
+                aligned_axes[idx] *= -1.0
+        first_axis = aligned_axes[0]
+        last_axis = aligned_axes[-1]
+        rotation_angle_deg = float(
+            np.degrees(
+                np.arccos(
+                    np.clip(np.abs(np.dot(first_axis, last_axis)), -1.0, 1.0)
+                )
+            )
+        )
+        if len(aligned_axes) > 1:
+            step_dots = np.sum(aligned_axes[:-1] * aligned_axes[1:], axis=1)
+            step_angles_deg = np.degrees(np.arccos(np.clip(np.abs(step_dots), -1.0, 1.0)))
+            total_rotation_deg = float(step_angles_deg.sum())
+        else:
+            total_rotation_deg = 0.0
+        start_plane = str(group["dominant_plane"].iloc[0])
+        end_plane = str(group["dominant_plane"].iloc[-1])
+        plane_switch_count = int((group["dominant_plane"] != group["dominant_plane"].shift()).sum() - 1)
+        start_angle_to_xy_deg = float(group["angle_to_xy_deg"].iloc[0])
+        end_angle_to_xy_deg = float(group["angle_to_xy_deg"].iloc[-1])
+        start_angle_to_xz_deg = float(group["angle_to_xz_deg"].iloc[0])
+        end_angle_to_xz_deg = float(group["angle_to_xz_deg"].iloc[-1])
+        xy_to_xz_transition_score = float(start_angle_to_xy_deg - end_angle_to_xz_deg)
 
         records.append(
             {
@@ -391,7 +526,21 @@ def summarize_tracks(
                 ),
                 "mean_span_length_um": float(group["span_length_um"].mean()),
                 "mean_arc_length_um": float(group["arc_length_um"].mean()),
-                "max_xy_slice_length_um": float(group["max_xy_slice_length_um"].max()),
+                "max_xy_slice_length_um": track_max_xy_slice_length_um,
+                "mean_linearity_r2": float(group["linearity_r2"].mean()),
+                "min_linearity_r2": float(group["linearity_r2"].min()),
+                "mean_rod_fit_rmse_um": float(group["rod_fit_rmse_um"].mean()),
+                "mean_rod_fit_cv": float(group["rod_fit_cv"].mean()),
+                "start_dominant_plane": start_plane,
+                "end_dominant_plane": end_plane,
+                "plane_switch_count": plane_switch_count,
+                "start_angle_to_xy_deg": start_angle_to_xy_deg,
+                "end_angle_to_xy_deg": end_angle_to_xy_deg,
+                "start_angle_to_xz_deg": start_angle_to_xz_deg,
+                "end_angle_to_xz_deg": end_angle_to_xz_deg,
+                "rotation_angle_deg": rotation_angle_deg,
+                "total_rotation_deg": total_rotation_deg,
+                "xy_to_xz_transition_score": xy_to_xz_transition_score,
                 "length_change_rate_um_per_min": length_change_rate,
                 "arc_trajectory_um": float(group["arc_length_um"].sum()),
                 "net_displacement_um": net_displacement_um,
@@ -454,6 +603,7 @@ def print_highlights(summary: pd.DataFrame, filtered: pd.DataFrame | None = None
     )
     print(
         f"- Mean directionality: {display_df['directionality'].mean():.2f}; "
+        f"mean line-fit R2: {display_df['mean_linearity_r2'].mean():.2f}; "
         f"strongest max intensity: {display_df['max_intensity'].max():.1f}."
     )
 
@@ -481,6 +631,50 @@ def report_bendiest_filament(summary: pd.DataFrame) -> None:
         f"bendiness {bendy['bendiness']:.2f} "
         f"(arc {bendy['mean_arc_length_um']:.2f} um / length {bendy['mean_length_um']:.2f} um)"
     )
+
+
+def report_best_rod_fits(summary: pd.DataFrame, top_n: int = 5) -> None:
+    if summary.empty:
+        return
+
+    best = summary.sort_values(
+        ["mean_linearity_r2", "mean_rod_fit_rmse_um"],
+        ascending=[False, True],
+    ).head(top_n)
+    print("\nBest straight-line / rod-like fits:")
+    for idx, row in enumerate(best.itertuples(index=False), start=1):
+        print(
+            f"  {idx}. {row.video}#{int(row.filament_id)}: "
+            f"mean R2 {row.mean_linearity_r2:.3f}, "
+            f"RMSE {row.mean_rod_fit_rmse_um:.3f} um, "
+            f"rotation {row.rotation_angle_deg:.1f} deg"
+        )
+
+
+def report_xy_to_xz_rotations(summary: pd.DataFrame, top_n: int = 5) -> None:
+    if summary.empty:
+        return
+
+    candidates = summary.loc[
+        (summary["start_dominant_plane"] == "xy")
+        & (summary["end_dominant_plane"] == "xz")
+    ].copy()
+    if candidates.empty:
+        print("\nNo filtered filaments switched dominant orientation from XY to XZ.")
+        return
+
+    candidates = candidates.sort_values(
+        ["xy_to_xz_transition_score", "rotation_angle_deg", "net_displacement_um"],
+        ascending=[False, False, False],
+    ).head(top_n)
+    print("\nFilaments rotating from XY-like to XZ-like:")
+    for idx, row in enumerate(candidates.itertuples(index=False), start=1):
+        print(
+            f"  {idx}. {row.video}#{int(row.filament_id)}: "
+            f"XY angle {row.start_angle_to_xy_deg:.1f} -> XZ angle {row.end_angle_to_xz_deg:.1f} deg, "
+            f"rotation {row.rotation_angle_deg:.1f} deg, "
+            f"displacement {row.net_displacement_um:.2f} um"
+        )
 
 
 def main() -> None:
@@ -518,6 +712,8 @@ def main() -> None:
         frame_interval_min=args.frame_interval_min,
         min_observations=args.min_observations,
         min_consecutive_frames=args.min_consecutive_frames,
+        small_xy_threshold_um=args.small_xy_threshold_um,
+        min_consecutive_frames_small_xy=args.min_consecutive_frames_small_xy,
     )
     if summary.empty:
         print("No filaments survive filtering and minimum observation requirements.")
@@ -550,6 +746,8 @@ def main() -> None:
     )
     report_strongest_signal(filtered_frames)
     report_bendiest_filament(summary)
+    report_best_rod_fits(summary)
+    report_xy_to_xz_rotations(summary)
     print_highlights(summary, summary)
 
 
