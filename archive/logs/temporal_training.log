@@ -1,0 +1,37 @@
+nohup: ignoring input
+Loading --epochs...
+Traceback (most recent call last):
+  File "/home/auro/biohack/biohack/scripts/train_3d.py", line 181, in <module>
+    main()
+    ~~~~^^
+  File "/home/auro/biohack/biohack/scripts/train_3d.py", line 130, in main
+    volumes, masks = load_paired_volumes(tif_files)
+                     ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^
+  File "/home/auro/biohack/biohack/scripts/train_3d.py", line 62, in load_paired_volumes
+    norm_data = load_data(fp)
+  File "/home/auro/biohack/biohack/scripts/train_3d.py", line 28, in load_data
+    img = tifffile.imread(filepath).astype(np.float32)
+          ~~~~~~~~~~~~~~~^^^^^^^^^^
+  File "/home/auro/biohack/biohack/.venv/lib/python3.13/site-packages/tifffile/tifffile.py", line 1227, in imread
+    with TiffFile(
+         ~~~~~~~~^
+        files,
+        ^^^^^^
+    ...<8 lines>...
+        **is_flags,
+        ^^^^^^^^^^^
+    ) as tif:
+    ^
+  File "/home/auro/biohack/biohack/.venv/lib/python3.13/site-packages/tifffile/tifffile.py", line 4359, in __init__
+    fh = FileHandle(file, mode=mode, name=name, offset=offset, size=size)
+  File "/home/auro/biohack/biohack/.venv/lib/python3.13/site-packages/tifffile/tifffile.py", line 13979, in __init__
+    self.open()
+    ~~~~~~~~~^^
+  File "/home/auro/biohack/biohack/.venv/lib/python3.13/site-packages/tifffile/tifffile.py", line 13999, in open
+    self._fh = open(  # noqa: SIM115
+               ~~~~^^^^^^^^^^^^^^^^^
+        self._file, self._mode, encoding=None
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+FileNotFoundError: [Errno 2] No such file or directory: '/home/auro/biohack/biohack/--epochs'
