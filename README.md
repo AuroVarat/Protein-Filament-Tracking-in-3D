@@ -1,7 +1,7 @@
 # Using a Tiny U Net 3D trained with temporal context to track a protein filaments in 3D.
 You can train or ~2 hand labelled 3d videos and it will label ( even better than the original hand label) the tiff videos.
 Note: I have broken the web labeller trying to sleekify it.
-![Filament3D Diagram](Screenshot 2026-04-06 at 15.00.16.png)
+![Filament3D Diagram](cover.png)
 
 
 
